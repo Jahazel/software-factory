@@ -1,0 +1,65 @@
+# One worker job on a fresh GitHub computer. A project repo calls this file.
+# The project keeps its own setup and proof scripts; this file holds the steps every project shares.
+name: Worker
+
+on:
+  workflow_call:
+    inputs:
+      setup:
+        description: Project script that installs the app and its services
+        type: string
+        required: true
+      proof:
+        description: Project script that proves the app works
+        type: string
+        required: true
+      proof-path:
+        description: Folder with the proof files to keep
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: "24"
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      # No API key fallback: when the subscription sign-in fails, the worker stops here.
+      - name: Check Claude sign-in
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: claude -p "Reply with the single word OK." --model haiku --max-turns 1
+
+      - name: Project setup
+        run: bash "${{ inputs.setup }}"
+
+      - name: Project proof
+        run: bash "${{ inputs.proof }}"
+
+      - name: Keep proof files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-${{ github.run_id }}
+          path: ${{ inputs.proof-path }}
+          retention-days: 7
+          if-no-files-found: warn
