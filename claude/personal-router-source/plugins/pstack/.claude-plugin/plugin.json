@@ -1,0 +1,11 @@
+{
+  "name": "pstack",
+  "version": "0.1.0-personal-review",
+  "description": "Personal router with the approved custom playbooks.",
+  "author": {
+    "name": "Jahazel Sanchez"
+  },
+  "agents": [
+    "./agents/poteto-agent.md"
+  ]
+}

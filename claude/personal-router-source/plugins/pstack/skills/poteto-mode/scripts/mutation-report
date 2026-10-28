@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Run mutator on the files a branch changed and print a report for the PR.
+
+Report only: survivors do not fail the run. The run fails when its numbers
+cannot be trusted: a tool is not at its locked version, the tests fail before
+any change, or no change was tried.
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+TOOL_FOLDERS = (".metrics", "target", "coverage")
+STALE_FOLDERS = (".metrics", "coverage")
+ASIDE = ".mutation-report-aside"
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)
+JS_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts")
+MAX_LISTED = 30
+STOP_SCANS = 3
+
+
+def fail(message):
+    print(f"mutation-report: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def git(*args):
+    result = subprocess.run(["git", *args], capture_output=True, text=True)
+    if result.returncode != 0:
+        fail(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def default_base():
+    found = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "origin/main"],
+                           capture_output=True)
+    return "origin/main" if found.returncode == 0 else "main"
+
+
+def check_lock(tools, lock):
+    for line in lock.read_text().splitlines():
+        name, sha = line.split()
+        actual = subprocess.run(["git", "-C", str(tools / name), "rev-parse", "HEAD"],
+                                capture_output=True, text=True).stdout.strip()
+        if actual != sha:
+            fail(f"{name} in {tools} is not at its locked version {sha} (found {actual or 'nothing'})")
+
+
+def changed_files(base):
+    fork = git("merge-base", base, "HEAD")
+    names = git("diff", "--name-only", "--diff-filter=d", fork, "HEAD").splitlines()
+    existing = [Path(name) for name in names if Path(name).is_file()]
+    kept = [str(path) for path in existing if path.parts[0] not in TOOL_FOLDERS]
+    return kept, len(existing) - len(kept)
+
+
+def publish(summary, left_out):
+    if left_out:
+        noun = "file in tool folders was" if left_out == 1 else "files in tool folders were"
+        summary += f"\n{left_out} changed {noun} left out."
+    print(summary)
+    return 0
+
+
+def uses_vitest():
+    package = Path("package.json")
+    if not package.is_file():
+        return False
+    data = json.loads(package.read_text())
+    return any("vitest" in data.get(key, {}) for key in ("dependencies", "devDependencies"))
+
+
+def mutator_command(tools, files):
+    command = [str(tools / "mutator" / "mutator")]
+    js_files = [name for name in files if name.endswith(JS_SUFFIXES)]
+    if js_files and uses_vitest():
+        command += ["--test-command", "npx vitest related --run --maxWorkers=1 " + shlex.join(js_files)]
+    return command + files
+
+
+def check_no_leftovers(names):
+    for name in names:
+        if Path(name + ASIDE).exists():
+            fail(f"{name + ASIDE} is left from a stopped run. Delete {name} if it exists, "
+                 f"then rename {name + ASIDE} to {name}.")
+
+
+def signal_groups(groups, signum):
+    for group in groups:
+        try:
+            os.killpg(group, signum)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def descendant_groups(root, known):
+    words = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,pgid="],
+                           capture_output=True, text=True).stdout.split()
+    rows = [tuple(map(int, words[i:i + 3])) for i in range(0, len(words), 3)]
+    found = {root} | {pid for pid, _, group in rows if group in known}
+    while grown := {pid for pid, parent, _ in rows if parent in found} - found:
+        found |= grown
+    return {group for pid, _, group in rows if pid in found}
+
+
+def stop_tree(process):
+    groups = {process.pid}
+    for _ in range(STOP_SCANS):
+        signal_groups(groups, signal.SIGSTOP)
+        groups |= descendant_groups(process.pid, groups)
+    signal_groups(groups, signal.SIGKILL)
+    process.wait()
+
+
+def restore(absent_before, hidden):
+    errors = []
+    still_hidden = [name for name in hidden if Path(name + ASIDE).exists()]
+    for name in absent_before + still_hidden:
+        try:
+            if Path(name).exists():
+                shutil.rmtree(name)
+        except OSError as error:
+            errors.append(f"could not delete {name}: {error}")
+    for name in still_hidden:
+        try:
+            Path(name + ASIDE).rename(name)
+        except OSError as error:
+            errors.append(f"could not rename {name + ASIDE} to {name}: {error}")
+    if errors:
+        fail("; ".join(errors))
+
+
+def run_isolated(command):
+    check_no_leftovers(STALE_FOLDERS)
+    hidden = []
+    absent_before = [name for name in TOOL_FOLDERS if not Path(name).exists()]
+    process = None
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
+        try:
+            for name in STALE_FOLDERS:
+                if Path(name).exists():
+                    Path(name).rename(name + ASIDE)
+                    hidden.append(name)
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                start_new_session=True,
+                preexec_fn=lambda: signal.pthread_sigmask(signal.SIG_UNBLOCK, STOP_SIGNALS))
+        finally:
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, STOP_SIGNALS)
+        stdout, stderr = process.communicate()
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
+        for stop in STOP_SIGNALS:
+            signal.signal(stop, signal.SIG_IGN)
+        try:
+            if process is not None and process.returncode is None:
+                stop_tree(process)
+        finally:
+            restore(absent_before, hidden)
+
+
+def parse(output):
+    sites = []
+    for line in output.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and parts[0].isupper() and ":" in parts[1].split()[0]:
+            sites.append(parts)
+    files = sorted({rest.split(":", 1)[0] for _, rest in sites})
+    survivors = [rest for label, rest in sites if label == "SURVIVED"]
+    totals = [line.split() for line in output.splitlines() if line.startswith("Total")]
+    if not totals:
+        return files, survivors, None
+    killed, survived, uncovered, count = map(int, totals[-1][1:5])
+    return files, survivors, {"killed": killed, "survived": survived,
+                              "uncovered": uncovered, "sites": count}
+
+
+def report(files, survivors, totals, seconds, log):
+    tried = totals["killed"] + totals["survived"]
+    lines = [
+        "**Mutation report** (report only, not a gate)",
+        f"Files: {', '.join(files)}",
+        f"Changes tried: {tried} · caught: {totals['killed']} · "
+        f"missed: {totals['survived']} · score {100 * totals['killed'] / tried:.1f}%",
+        f"Not run by any test: {totals['uncovered']}",
+        f"Run time: {seconds // 60} min {seconds % 60} s",
+    ]
+    if survivors:
+        lines.append("Missed changes:")
+        lines += [f"- {item}" for item in survivors[:MAX_LISTED]]
+        if len(survivors) > MAX_LISTED:
+            lines.append(f"- … {len(survivors) - MAX_LISTED} more in {log}")
+    lines.append(f"Full log: {log}")
+    return "\n".join(lines)
+
+
+def main(argv=None):
+    here = Path(__file__).resolve().parent
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base", help="branch the PR targets; default origin/main, else main")
+    parser.add_argument("--tools", type=Path, default=Path.home() / "tools" / "unclebob")
+    parser.add_argument("--lock", type=Path, default=here / "mutation-tools.lock")
+    args = parser.parse_args(argv)
+
+    def stop_once(signum, frame):
+        for stop in STOP_SIGNALS:
+            signal.signal(stop, signal.SIG_IGN)
+        sys.exit(128 + signum)
+
+    for stop in STOP_SIGNALS:
+        signal.signal(stop, stop_once)
+    args.tools = args.tools.resolve()
+    check_lock(args.tools, args.lock)
+    os.chdir(git("rev-parse", "--show-toplevel"))
+    files, left_out = changed_files(args.base or default_base())
+    if not files:
+        return publish("**Mutation report**: No changed files on this branch.", left_out)
+
+    started = time.monotonic()
+    result = run_isolated(mutator_command(args.tools, files))
+    seconds = round(time.monotonic() - started)
+
+    output = result.stdout + result.stderr
+    with tempfile.NamedTemporaryFile("w", prefix="mutation-report-", suffix=".log",
+                                     delete=False) as handle:
+        handle.write(output)
+    log = handle.name
+
+    if "No source files to mutate." in result.stdout:
+        return publish("**Mutation report**: No changed source files on this branch.", left_out)
+    if result.returncode == 2 and "Baseline failed" in output:
+        fail(f"the tests failed before any change was made. See {log}")
+    if result.returncode not in (0, 3):
+        fail(f"mutator exited {result.returncode}. See {log}")
+    tried_files, survivors, totals = parse(result.stdout)
+    if totals is None or totals["killed"] + totals["survived"] == 0:
+        fail(f"no change was tried, so the result proves nothing. See {log}")
+    return publish(report(tried_files, survivors, totals, seconds, log), left_out)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

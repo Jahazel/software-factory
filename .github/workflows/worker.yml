@@ -43,11 +43,28 @@ jobs:
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code
 
+      # Outside the project checkout, so a worker cannot commit factory files by mistake.
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Install pstack and skills
+        run: bash "$RUNNER_TEMP/factory/scripts/install-claude.sh"
+
       # No API key fallback: when the subscription sign-in fails, the worker stops here.
       - name: Check Claude sign-in
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: claude -p "Reply with the single word OK." --model haiku --max-turns 1
+
+      - name: Check Claude sees pstack and skills
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          names=$(claude -p "List the names of every skill available to you, one per line, nothing else." --model haiku --max-turns 1)
+          echo "$names"
+          for skill in pstack:poteto-mode architect tdd code-review impeccable principle-prove-it-works; do
+            grep -q "$skill" <<<"$names" || { echo "Claude does not see the skill $skill."; exit 1; }
+          done
 
       - name: Project setup
         run: bash "${{ inputs.setup }}"

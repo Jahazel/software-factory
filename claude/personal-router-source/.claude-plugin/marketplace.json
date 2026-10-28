@@ -1,0 +1,12 @@
+{
+  "name": "personal-router",
+  "owner": {
+    "name": "Jahazel Sanchez"
+  },
+  "plugins": [
+    {
+      "name": "pstack",
+      "source": "./plugins/pstack"
+    }
+  ]
+}
