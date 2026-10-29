@@ -1,5 +1,5 @@
-# Decides which labeled issues get a worker. A project repo calls this file when the owner adds a label.
-# Dry run only for now: it reports its decisions and changes nothing.
+# Decides which labeled issues get a worker, runs one worker per claimed issue, and always
+# releases the claims. A project repo calls this file when the owner adds a label.
 name: Orchestrator
 
 on:
@@ -10,25 +10,33 @@ on:
         type: number
         default: 1
       dry-run:
+        description: Report the decisions only; change no labels and start no worker
         type: boolean
         default: true
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
+      FACTORY_GITHUB_TOKEN:
+        required: true
 
+# Label changes and the re-run use github.token, so they start no workflow by accident.
 permissions:
   contents: read
-  issues: read
+  issues: write
   pull-requests: read
+  actions: write
 
 jobs:
-  orchestrate:
+  decide:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # One orchestrator at a time per project, so two label events cannot both take the last free place.
+    # One decide at a time per project, so two label events cannot both take the last free place.
+    # Only this job holds the lock; workers run outside it.
     concurrency:
       group: factory-orchestrator-${{ github.repository }}
       cancel-in-progress: false
+    outputs:
+      issues: ${{ steps.decide.outputs.issues }}
     steps:
       - uses: actions/setup-node@v5
         with:
@@ -46,9 +54,40 @@ jobs:
       - name: Get factory files
         run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
 
-      - name: Decide
+      - name: Decide and claim
+        id: decide
         env:
           GH_TOKEN: ${{ github.token }}
           CAP: ${{ inputs.cap }}
           DRY_RUN: ${{ inputs.dry-run }}
         run: bash "$RUNNER_TEMP/factory/scripts/orchestrate.sh"
+
+  work:
+    needs: decide
+    if: needs.decide.outputs.issues != '[]' && needs.decide.outputs.issues != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        issue: ${{ fromJSON(needs.decide.outputs.issues) }}
+    permissions:
+      contents: read
+    uses: Jahazel/software-factory/.github/workflows/worker.yml@main
+    with:
+      issue: ${{ format('{0}', matrix.issue) }}
+    secrets: inherit
+
+  # A separate computer, so a claim is released even when a worker computer dies.
+  settle:
+    needs: [decide, work]
+    if: always() && needs.decide.outputs.issues != '[]' && needs.decide.outputs.issues != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Release claims and look again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUES: ${{ needs.decide.outputs.issues }}
+        run: bash "$RUNNER_TEMP/factory/scripts/settle.sh"

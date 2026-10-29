@@ -1,5 +1,5 @@
 # One worker job on a fresh GitHub computer. A project repo calls this file.
-# The project keeps its own setup, proof, and rules files; this file holds the steps every project shares.
+# The project keeps its own setup, proof, and rules files in .factory/; this file holds the steps every project shares.
 # With no issue, the job runs the project's proof only. With an issue, Claude works the issue and opens a PR.
 name: Worker
 
@@ -9,19 +9,19 @@ on:
       setup:
         description: Project script that installs the app and its services
         type: string
-        required: true
+        default: .factory/setup.sh
       proof:
         description: Project script that proves the app works
         type: string
-        required: true
+        default: .factory/smoke.sh
       proof-path:
         description: Folder with the proof files to keep
         type: string
-        required: true
+        default: .verification/evidence/
       rules:
         description: Project rules added to the worker prompt; issue runs need it
         type: string
-        default: ""
+        default: .factory/worker-rules.md
       # A string: workflow_dispatch passes its number input on as text.
       issue:
         description: Issue number to work; 0 runs the proof only
