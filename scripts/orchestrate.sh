@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# The orchestrator's fixed steps, as plain code: release dead claims, merge main into the open
+# factory PRs, skip, plan, cap, and claim. Each run looks at all PRs and candidates, so a lost or
+# repeated event changes nothing. Tests source this file; it then only defines the functions.
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
 # GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, CAP, DRY_RUN, AGENT_CONFLICTS
 # (space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
@@ -6,8 +9,8 @@
 # {"issue":n,"branch":b,"pr":p,"main":sha} for a resolve worker that merges main into the open PR p
 # on branch b.
 set -euo pipefail
-source "$(dirname "$0")/lib.sh"
-prompts="$(dirname "$0")/../prompts"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+prompts="$(dirname "${BASH_SOURCE[0]}")/../prompts"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
 trigger="agent:implement"
@@ -130,6 +133,7 @@ refresh() {
   done <<<"$prs"
 }
 
+# Prints the candidate issues, oldest first, one per line: the labeled issues that pass the skip rules.
 pick() {
   local n issue labels labeler
 
@@ -155,6 +159,8 @@ pick() {
   done 3>&1 >&2
 }
 
+# Prints the work in flight as a JSON array: each factory PR with the files it changes, and each
+# claimed issue without a factory PR (a new-work worker) with its title only.
 busy_items() {
   local prs pr issue branch blocked files title items=() pr_issues workers
   prs=$(factory_prs) || return 1
@@ -172,16 +178,20 @@ busy_items() {
   printf '%s\n' ${items[@]+"${items[@]}"} "$workers" | jq -sc .
 }
 
+# Asks Claude which candidates ($1, JSON array) would change the same files as the busy work ($2)
+# or an older candidate. Prints the holds JSON array. On failure prints one reason on stderr and
+# returns 1.
 planner_holds() {
   local tree briefs doc out
   tree=$(gh api "repos/$repo/git/trees/main?recursive=1" \
-    --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("docs/") | not)]') \
+    --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("docs/") | not)]' 2>/dev/null) \
     || { echo "the files on main could not be listed" >&2; return 1; }
   briefs=$(for n in $(jq '.[]' <<<"$1"); do
-      issue_brief "$n" | jq -Rsc --argjson n "$n" '{issue: $n, brief: .}' || exit 1
+      issue_brief "$n" 2>/dev/null | jq -Rsc --argjson n "$n" '{issue: $n, brief: .}' || exit 1
     done | jq -sc .) || { echo "an issue could not be read" >&2; return 1; }
   doc=$(jq -cn --argjson candidates "$briefs" --argjson busy "$2" --argjson tree "$tree" --arg ignore "${AGENT_CONFLICTS:-}" \
-    '{candidates: $candidates, busy: $busy, tree: $tree, ignore: ($ignore | split(" ") | map(select(. != "")))}')
+    '{candidates: $candidates, busy: $busy, tree: $tree, ignore: ($ignore | split(" ") | map(select(. != "")))}') \
+    || { echo "the planner input could not be built" >&2; return 1; }
   out=$({ cat "$prompts/planner.md"; echo; echo "$doc"; } \
     | env -u FACTORY_TOKEN -u GH_TOKEN timeout 300 claude -p --model claude-sonnet-5-5 --effort medium \
         --tools "" --max-turns 3 --no-session-persistence --output-format json \
@@ -196,6 +206,8 @@ planner_can_change_plan() {
   [ "$busy" != '[]' ] || { [ "$free" -gt 1 ] && [ "$(jq length <<<"$cands")" -gt 1 ]; }
 }
 
+# Reads the candidates on stdin, oldest first, and prints the ones that start now, one per line.
+# $1 is the number of resolve jobs from refresh; they take their places first.
 plan() {
   local cands free busy='[]' holds='[]' failure="" err decisions d
   cands=$(jq -sc .)
@@ -206,9 +218,10 @@ plan() {
     if ! busy=$(busy_items); then
       busy='[]' holds=null failure="the work in flight could not be listed"
     elif planner_can_change_plan "$busy" "$free" "$cands"; then
-      holds=$(planner_holds "$cands" "$busy" 2>"$err") || { holds=null failure=$(head -1 "$err"); }
+      holds=$(planner_holds "$cands" "$busy" 2>"$err") || { holds=null failure=$(tail -1 "$err"); }
     fi
   fi
+  rm -f "$err"
   [ "$holds" != null ] || echo "::warning::Planner unavailable: $failure. Only the first candidate may start."
   if ! decisions=$(jq -n --argjson candidates "$cands" --argjson free "$free" --argjson busy "$busy" \
       --argjson holds "$holds" --arg failure "$failure" --argjson dry_run "$DRY_RUN" \
@@ -233,6 +246,7 @@ claim() {
   done
 }
 
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 sweep
 running=$(gh issue list --repo "$repo" --state open --label agent:in-progress --json number --jq length)
 summary_header

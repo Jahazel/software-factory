@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-source "$root/scripts/lib.sh"
-eval "$(sed -n '/^decide()/p; /^planner_can_change_plan()/,/^}/p; /^plan()/,/^}/p' "$root/scripts/orchestrate.sh")"
-summary=/dev/null DRY_RUN=false AGENT_CONFLICTS=migrations/ CAP=2
+GITHUB_REPOSITORY=o/r GITHUB_REPOSITORY_OWNER=o GITHUB_RUN_ID=0 GITHUB_STEP_SUMMARY=/dev/null
+source "$root/scripts/orchestrate.sh"
+DRY_RUN=false AGENT_CONFLICTS=migrations/ CAP=2
 calls=$(mktemp)
 busy_items() { [ "$BUSY" != fail ] || return 1; echo "$BUSY"; }
 planner_holds() {

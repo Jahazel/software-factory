@@ -6,7 +6,8 @@ mkdir "$work/bin"
 cat > "$work/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
-  *git/trees/main*) echo '["src/a.ts","next.config.ts"]' ;;
+  *git/trees/main*) [ -z "${TREE_FAILS:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+    echo '["src/a.ts","next.config.ts"]' ;;
   "issue view"*) echo '{"title":"Add a header","body":"Change next.config.ts.","labels":[]}' ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
@@ -21,8 +22,7 @@ case "$CLAUDE_STUB" in
 esac
 EOF
 chmod +x "$work/bin/gh" "$work/bin/claude"
-{ echo 'set -euo pipefail; source "$ROOT/scripts/lib.sh"; repo=$GITHUB_REPOSITORY; prompts="$ROOT/prompts"'
-  sed -n '/^planner_holds()/,/^}/p' "$root/scripts/orchestrate.sh"
+{ echo 'GITHUB_REPOSITORY_OWNER=o GITHUB_RUN_ID=0; source "$ROOT/scripts/orchestrate.sh"'
   echo 'planner_holds "[7]" "[{\"kind\":\"pr\",\"issue\":2,\"pr\":3,\"title\":\"t\",\"files\":[\"next.config.ts\"]}]"'
 } > "$work/call.sh"
 fails=0
@@ -49,4 +49,6 @@ got=$(run junk) && got="exit 0" || got="exit $?: $(cat "$work/err")"
 check "an answer that is not valid JSON fails with a reason" "exit 1: invalid output" "$got"
 got=$(run fail) && got="exit 0" || got="exit $?: $(cat "$work/err")"
 check "a failed call fails with a reason" "exit 1: the Claude call failed or timed out" "$got"
+got=$(TREE_FAILS=1 run ok) && got="exit 0" || got="exit $?: $(cat "$work/err")"
+check "a failed GitHub read gives the planner's reason, not GitHub's error text" "exit 1: the files on main could not be listed" "$got"
 exit "$fails"

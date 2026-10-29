@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rules that the orchestrator and the settle job share. Source this file; it runs nothing.
+# Rules that the orchestrator, the settle job, and prepare-issue share. Source this file; it runs nothing.
 # Needs GH_TOKEN and GITHUB_REPOSITORY.
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
@@ -10,6 +10,8 @@ closing_pr() {
     | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | startswith("issue-\($n)-")))] | .[0].number // ""'
 }
 
+# Prints the text the worker and the planner read for issue $1: title, labels, body, and the parent
+# issue's title and body when the body has a "## Parent" section.
 issue_brief() {
   local json parent
   json=$(gh issue view "$1" --repo "$GITHUB_REPOSITORY" --json title,body,labels) || return 1
@@ -58,6 +60,9 @@ classify_conflict() {
   if [ "$any" = true ]; then echo agent; else echo owner; fi
 }
 
+# Reads the planner's claude --output-format json document on stdin. Prints its holds array when
+# every hold has an integer issue and string lists overlaps and files. Any other shape returns 1,
+# so a half-valid answer is never partly used.
 valid_holds() {
   jq -ec 'select(.is_error == false and (.structured_output | type == "object")
       and (.structured_output.holds | type == "array" and all(.[];
@@ -68,6 +73,11 @@ valid_holds() {
     | .structured_output.holds' 2>/dev/null
 }
 
+# Reads {candidates (oldest first), free, busy, holds, failure, dry_run} on stdin; holds is null when
+# the planner failed. Prints one {issue, decision, reason, start} line per candidate, in order.
+# A hold counts only when it names an open PR, a running issue, or an older candidate that is not
+# held itself, and a file outside AGENT_CONFLICTS: so the older issue wins and no two holds wait on
+# each other. When the planner failed, the first candidate starts and the rest hold.
 plan_decisions() {
   jq -c --arg ignore "${AGENT_CONFLICTS:-}" '
     def dedupe: reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end);
@@ -86,18 +96,19 @@ plan_decisions() {
     | "planner unavailable: \($failure); started the first candidate only" as $unavailable
     | reduce $cands[] as $n ({free: $free, held: [], out: []};
         . as $s
-        | ($holds // [] | map(select(.issue == $n))) as $mine
+        | def start_or_cap($why): if $s.free > 0 then $start + $why else $cap end;
+        ($holds // [] | map(select(.issue == $n))) as $mine
         | ($mine | map(.overlaps[]) | dedupe
             | map(select(open_pr or busy_issue or earlier_candidate($n; $s.held)))) as $targets
         | ($mine | map(.files[]) | dedupe | map(select(outside_agent_conflicts))) as $files
+        | ($s.out == []) as $first
         | (if $holds == null then
-             if $s.out == [] then (if $s.free > 0 then $start + {reason: $unavailable} else $cap end)
-             else {decision: "hold", reason: $unavailable} end
-           elif $mine == [] then (if $s.free > 0 then $start else $cap end)
+             if $first then start_or_cap({reason: $unavailable}) else {decision: "hold", reason: $unavailable} end
+           elif $mine == [] then start_or_cap({})
            elif $targets == [] then
-             (if $s.free > 0 then $start + {reason: "planner hold ignored: no overlap with an open PR, a running worker, or an earlier candidate that starts"} else $cap end)
+             start_or_cap({reason: "planner hold ignored: no overlap with an open PR, a running worker, or an earlier candidate that starts"})
            elif $files == [] then
-             (if $s.free > 0 then $start + {reason: "planner hold ignored: it names no file\(if $prefixes == [] then "" else " outside \($prefixes | join(", "))" end)"} else $cap end)
+             start_or_cap({reason: "planner hold ignored: it names no file\(if $prefixes == [] then "" else " outside \($prefixes | join(", "))" end)"})
            else {decision: "hold", reason: "overlaps \($targets | join(", ")): \($files[:3] | join(", "))", planned: true} end) as $d
         | ($d.decision != "hold") as $go
         | .free -= (if $go then 1 else 0 end)
