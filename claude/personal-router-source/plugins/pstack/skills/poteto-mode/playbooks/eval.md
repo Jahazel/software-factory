@@ -1,0 +1,15 @@
+# Eval
+
+1. Frame the test. Name the variant: the changed skill, prompt, instruction file, or code structure. Name the baseline: the old version, or no variant for a new skill. State the behavior that counts as success. Write a rubric of 3 to 6 concrete criteria. Only the judge sees the rubric. Done when the variant, baseline, success behavior, and rubric are written.
+2. Set up one working folder per candidate outside the repository. Give each folder a name a real user might pick, such as `invoice-app-a`. Put the variant or the baseline in place, plus the context a real task would have: a project skeleton and the skills a candidate would read. Blinding rule: no folder, file, or prompt a candidate sees contains `eval`, `test`, `judge`, `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate`, or `arena`. Done when every folder exists and a search finds none of those words in it.
+3. Write one prompt that a real user would type. State the goal only. Do not mention the test, other candidates, or which skills to use. Do not ask a candidate to list the skills or rules it applied. Done when the prompt passes the blinding rule.
+4. Run the candidates with Phase B of `arena`. Give every candidate the same prompt and its own folder. Use the arena runners from `pstack-models.md`: `opus`, `fable`, `sonnet`, and `haiku`. Run each runner on the variant and on the baseline. Use medium effort. Record which model and version each label hides, and keep that key from the judge. Done when every candidate finished or is recorded as a dropout.
+5. Run one judge with Phase C of `arena`, at medium effort. The judge comes from the same model family as the candidates, so it can share their blind spots. Say so in the reply. Give the judge the rubric and the outputs by label only, never by model or version. One judge scores all outputs in one pass on one scale. Done when the judge returns a score per criterion per label.
+6. Check what each candidate did from its transcript, not from its own report. Helper transcripts are in `~/.claude/projects/<workspace>/<session>/subagents/`. Read only the current task's transcripts, never other projects' chats. Note which files each candidate opened and in what order it acted. Grade rule-following from those actions and from the shape of the output. Done when every candidate has transcript notes.
+7. Read every output end to end. Score it against the rubric yourself, then compare with the judge. Treat a disagreement as a biased model or an unclear rubric, and name which one. Delete the candidate folders. Done when every disagreement has an explanation.
+8. Reply with the variant and baseline, the rubric, the label key, notes per candidate, the judge's scores and the same-family warning, your scores, the disagreements, and a recommendation to keep or drop the variant. Apply `unslop`. This playbook changes no project code, so it opens no PR. When the user keeps the variant, the change lands through its own playbook.
+
+## Skill references
+
+- [arena](/Users/jahazelsanchez/.claude/skills/arena/SKILL.md).
+- [unslop](/Users/jahazelsanchez/.claude/skills/unslop/SKILL.md).

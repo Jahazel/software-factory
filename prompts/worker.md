@@ -21,7 +21,6 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 | The test seams (`tdd`) | Choose them from the issue's acceptance criteria. List them in the PR body. |
 | The review base (`code-review`) | `git merge-base HEAD origin/main`. |
 | The spec (`code-review`) | Issue #{{ISSUE}}, and its parent issue when it has one. |
-| An independent reviewer (`code-review`) | Codex is not on this computer. Run each reviewer with `claude -p --model claude-opus-5-5 --effort high --permission-mode plan --no-session-persistence` (prompt on stdin). Say in the PR body that the review ran on Opus. |
 | Access or an artifact to reproduce a bug (`diagnosing-bugs`) | None is available. Block. |
 | An owner decision | Block. |
 

@@ -48,7 +48,7 @@ Keep existing code-check hooks unchanged. Their later reassessment is a separate
 
 ## Helpers
 
-The main agent does all the work itself, at every change size: reading, implementing, refactoring, and checking. It starts no helpers, with two exceptions. The comment rules start one `comment-sicko` helper through `no-comments`. The independent code review runs in the other app. Start any other helper only when the work will not fit in the main agent's context window, when independent parts can run at the same time, or when the user asks. Before starting a helper, read [full workflow guidance](references/full-workflow.md#helpers) and [model rules](references/model-rules.md).
+The main agent does all the work itself, at every change size: reading, implementing, refactoring, and checking. It starts no helpers, with two exceptions. The comment rules start one `comment-sicko` helper through `no-comments`. The independent code review runs in a separate Claude Code process. Start any other helper only when the work will not fit in the main agent's context window, when independent parts can run at the same time, or when the user asks. Before starting a helper, read [full workflow guidance](references/full-workflow.md#helpers) and [model rules](references/model-rules.md).
 
 ## Playbooks
 
@@ -64,8 +64,9 @@ Select one playbook from the task's outcome. Open it and copy its steps to the c
 | Change structure while preserving behavior. | [Refactoring](playbooks/refactoring.md). |
 | Open authorized changes for review after checks. | [Opening a PR](playbooks/opening-a-pr.md). |
 | Fix or report on an open PR when the user asks. | [Babysit](playbooks/babysit.md). |
+| Test whether a change to a skill, prompt, instruction file, or code structure makes agents behave better before keeping it. | [Eval](playbooks/eval.md). |
 
-Planning, Design, and Investigation wait for the user's implementation request before changing real code. Their decision output does not itself require a PR. Implementation playbooks use Opening a PR within the task's authorization.
+Planning, Design, Investigation, and Eval wait for the user's implementation request before changing real code. Their decision output does not itself require a PR. Implementation playbooks use Opening a PR within the task's authorization.
 
 ## Writing the reply
 

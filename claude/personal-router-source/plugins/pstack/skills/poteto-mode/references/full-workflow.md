@@ -29,7 +29,7 @@ Read the full leaf skill for each principle you apply. Name the principle and th
 
 ## Helpers
 
-The main agent does all the work itself, at every change size: reading, implementing, refactoring, and checking. It starts no helpers, with two exceptions. The comment rules start one `comment-sicko` helper through `no-comments`. The independent code review runs in the other app. Start any other helper only when the work will not fit in the main agent's context window, when independent parts can run at the same time, or when the user asks.
+The main agent does all the work itself, at every change size: reading, implementing, refactoring, and checking. It starts no helpers, with two exceptions. The comment rules start one `comment-sicko` helper through `no-comments`. The independent code review runs in a separate Claude Code process. Start any other helper only when the work will not fit in the main agent's context window, when independent parts can run at the same time, or when the user asks.
 
 When a helper runs, give it a short brief: the task, source paths, exact write scope, and the full current instructions. Run it in the background and continue independent work. Stop an abandoned helper and confirm that it stopped. The main agent inspects the actual result and writes its own summary. Read [model rules](model-rules.md) before choosing models or reasoning effort.
 
