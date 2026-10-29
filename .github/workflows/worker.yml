@@ -22,10 +22,11 @@ on:
         description: Project rules added to the worker prompt; issue runs need it
         type: string
         default: ""
+      # A string: workflow_dispatch passes its number input on as text.
       issue:
         description: Issue number to work; 0 runs the proof only
-        type: number
-        default: 0
+        type: string
+        default: "0"
       node-version:
         type: string
         default: "24"
@@ -46,8 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          token: ${{ inputs.issue != 0 && secrets.FACTORY_GITHUB_TOKEN || github.token }}
-          persist-credentials: ${{ inputs.issue != 0 }}
+          token: ${{ inputs.issue != '0' && secrets.FACTORY_GITHUB_TOKEN || github.token }}
+          persist-credentials: ${{ inputs.issue != '0' }}
 
       - uses: actions/setup-node@v5
         with:
@@ -83,12 +84,12 @@ jobs:
         run: bash "${{ inputs.setup }}"
 
       - name: Project proof
-        if: inputs.issue == 0
+        if: inputs.issue == '0'
         run: bash "${{ inputs.proof }}"
 
       - name: Prepare the issue
         id: prepare
-        if: inputs.issue != 0
+        if: inputs.issue != '0'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
         run: |
@@ -101,7 +102,7 @@ jobs:
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Work the issue
-        if: inputs.issue != 0
+        if: inputs.issue != '0'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
