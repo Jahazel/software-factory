@@ -1,5 +1,6 @@
-# Decides which labeled issues get a worker, runs one worker per claimed issue, and always
-# releases the claims. A project repo calls this file when the owner adds a label.
+# Merges main into the open factory PRs, decides which labeled issues get a worker, runs one worker
+# per claimed issue, and always releases the claims. A project repo calls this file when the owner
+# adds a label and when main moves.
 name: Orchestrator
 
 on:
@@ -13,6 +14,10 @@ on:
         description: Report the decisions only; change no labels and start no worker
         type: boolean
         default: true
+      agent-conflicts:
+        description: Path prefixes, space-separated, where a merge conflict goes to a worker; any other conflict blocks the PR
+        type: string
+        default: ""
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -29,7 +34,7 @@ permissions:
 jobs:
   decide:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     # One decide at a time per project, so two label events cannot both take the last free place.
     # Only this job holds the lock; workers run outside it.
     concurrency:
@@ -54,12 +59,15 @@ jobs:
       - name: Get factory files
         run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
 
-      - name: Decide and claim
+      - name: Refresh PRs, decide, and claim
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
+          # Only the merge of main into a PR uses it, so that push starts the PR's checks.
+          FACTORY_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           CAP: ${{ inputs.cap }}
           DRY_RUN: ${{ inputs.dry-run }}
+          AGENT_CONFLICTS: ${{ inputs.agent-conflicts }}
         run: bash "$RUNNER_TEMP/factory/scripts/orchestrate.sh"
 
   work:
