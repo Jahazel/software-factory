@@ -4,7 +4,7 @@ The orchestrator sent you because merging main into this branch either conflicts
 
 ## Where you are
 
-- A fresh GitHub Actions computer, thrown away when the job ends. You are in the project checkout, on branch `{{BRANCH}}`, with its full history.
+- A fresh GitHub Actions computer, thrown away when the job ends. You are in the task's linked worktree on branch `{{BRANCH}}`, with its full history.
 - The project setup already ran: packages are installed, and a loopback Postgres is running. `DATABASE_URL` in the shell points at it. It holds no real data.
 - `gh` and `git push` are signed in. Everything you print goes to a public job log, so print no secret.
 - Project rules follow this prompt, under `Project rules`. They win over this prompt when the two differ.
@@ -15,6 +15,8 @@ The orchestrator sent you because merging main into this branch either conflicts
 Never ask a question and never wait for an answer. When a choice is not covered below or by the project rules, block.
 
 ## Merge the newest main
+
+Run `worktree` before repository edits. Reuse this task's prepared worktree and branch.
 
 {{MERGE_MAIN}}
 
