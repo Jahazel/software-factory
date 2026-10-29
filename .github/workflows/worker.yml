@@ -80,16 +80,36 @@ jobs:
             grep -q "$skill" <<<"$names" || { echo "Claude does not see the skill $skill."; exit 1; }
           done
 
-      # Skills such as code-review start a second claude -p from inside the worker.
-      - name: Check nested Claude sign-in
-        continue-on-error: true
+      # Claude Code removes CLAUDE_CODE_OAUTH_TOKEN from the commands it runs, so a claude -p
+      # started inside the worker (code-review does this) is signed out. A wrapper ahead of the
+      # real claude on PATH reads the token from a file only this user can read.
+      - name: Sign in nested Claude runs
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          claude -p --model haiku --max-turns 3 --dangerously-skip-permissions <<'PROMPT'
-          Run this exact shell command once, then reply with its full output and nothing else:
-          echo "token_vars=$(env | grep -c '^CLAUDE_CODE_OAUTH_TOKEN=')"; claude -p 'Reply with the single word OK.' --model haiku --max-turns 1
+          real=$(command -v claude)
+          umask 077
+          printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" > "$HOME/.claude/factory-token"
+          mkdir -p "$RUNNER_TEMP/bin"
+          cat > "$RUNNER_TEMP/bin/claude" <<WRAPPER
+          #!/usr/bin/env bash
+          export CLAUDE_CODE_OAUTH_TOKEN="\${CLAUDE_CODE_OAUTH_TOKEN:-\$(cat "$HOME/.claude/factory-token")}"
+          exec "$real" "\$@"
+          WRAPPER
+          chmod 700 "$RUNNER_TEMP/bin/claude"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Check nested Claude sign-in
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          out=$(claude -p --model haiku --max-turns 3 --dangerously-skip-permissions <<'PROMPT'
+          Run this exact shell command once, then reply with its full output, verbatim, and nothing else:
+          claude -p 'Reply with the single word OK.' --model haiku --max-turns 1
           PROMPT
+          )
+          echo "$out"
+          grep -qx "OK" <<<"$out" && ! grep -q "Not logged in" <<<"$out" || { echo "A claude -p inside the worker cannot sign in."; exit 1; }
 
       - name: Project setup
         run: bash "${{ inputs.setup }}"
