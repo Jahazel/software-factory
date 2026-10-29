@@ -10,6 +10,22 @@ closing_pr() {
     | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | startswith("issue-\($n)-")))] | .[0].number // ""'
 }
 
+# Reads one labeled issue's facts as JSON on stdin: owner, author, labeler (who last added the
+# trigger label), labels, sub_issues (count), open_pr, blockers. Prints why the orchestrator skips
+# the issue, or nothing when it is a candidate.
+skip_reason() {
+  jq -r 'if .author != .owner then "not opened by the owner"
+      elif .labeler != .owner then "label not added by the owner"
+      elif .labels | index("gardening:report") then "a gardening report; the gardener'\''s PR is its work"
+      elif .labels | index("ready-for-human") then "has ready-for-human"
+      elif .sub_issues > 0 then "has \(.sub_issues) sub-issues"
+      elif .labels | index("agent:blocked") then "has agent:blocked"
+      elif .labels | index("agent:in-progress") then "a worker already has it"
+      elif .open_pr != "" then "open PR #\(.open_pr) closes it"
+      elif .blockers != "" then "blocked by \(.blockers)"
+      else "" end'
+}
+
 # Prints the text the worker and the planner read for issue $1: title, labels, body, and the parent
 # issue's title and body when the body has a "## Parent" section.
 issue_brief() {
