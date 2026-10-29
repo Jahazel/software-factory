@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Label rules that the orchestrator and the settle job share. Source this file; it runs nothing.
+# Rules that the orchestrator and the settle job share. Source this file; it runs nothing.
 # Needs GH_TOKEN and GITHUB_REPOSITORY.
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
@@ -8,6 +8,37 @@ closing_pr() {
   gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 \
     --json number,headRefName,body,closingIssuesReferences \
     | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | startswith("issue-\($n)-")))] | .[0].number // ""'
+}
+
+# Prints one line per factory PR, by PR number: <pr> <issue> <branch> <has agent:blocked: true|false>
+# A factory PR is an open PR into main, from this repo, on branch issue-<n>-*, where open issue n has
+# agent:implement. The label keeps out the owner's own PRs, which use the same branch names.
+factory_prs() {
+  local labeled
+  labeled=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label agent:implement --limit 200 --json number --jq '[.[].number]') || return 1
+  gh pr list --repo "$GITHUB_REPOSITORY" --state open --base main --limit 200 \
+    --json number,headRefName,isCrossRepository,labels \
+    | jq -r --argjson labeled "$labeled" '[.[] | select(.isCrossRepository | not)
+        | (.headRefName | capture("^issue-(?<n>[0-9]+)-").n // empty | tonumber) as $n
+        | select($labeled | index($n)) | . + {issue: $n}]
+      | sort_by(.number) | .[]
+      | "\(.number) \(.issue) \(.headRefName) \([.labels[].name] | index("agent:blocked") != null)"'
+}
+
+# Reads conflicting paths on stdin. Prints "agent" when the list is not empty and every path starts
+# with one of the space-separated prefixes in AGENT_CONFLICTS, else "owner".
+classify_conflict() {
+  local path prefix prefixes any=false matched
+  read -ra prefixes <<<"${AGENT_CONFLICTS:-}"
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    any=true matched=false
+    for prefix in ${prefixes[@]+"${prefixes[@]}"}; do
+      [[ "$path" == "$prefix"* ]] && matched=true
+    done
+    [ "$matched" = true ] || { echo owner; return; }
+  done
+  if [ "$any" = true ]; then echo agent; else echo owner; fi
 }
 
 # The caller's workflow file, such as factory-orchestrator.yml. Inside a called workflow,
