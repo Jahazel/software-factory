@@ -18,7 +18,7 @@ The two branches produce very different artifacts, so getting this wrong wastes 
 
 ## Rules that apply to both
 
-1. **Throwaway from day one, and clearly marked as such.** Use a scratch folder for logic demos and standalone visual ideas. Use a separate Git worktree for prototypes that need the existing app's context. Inside that worktree, place the prototype beside the module or page it concerns and follow the project's routing conventions. Name prototype files or routes so their purpose is clear.
+1. **Throwaway from day one, and clearly marked as such.** Use a scratch folder for logic demos and standalone visual ideas. Run [worktree](/Users/jahazelsanchez/.claude/skills/worktree/SKILL.md) before repository edits. Place the prototype beside the module or page it concerns and follow the project's routing conventions. Name prototype files or routes so their purpose is clear.
 2. **Trivial to run.** A UI prototype starts from one command in the project's task runner: `pnpm <name>`, `python <path>`, `bun <path>`, etc. A logic demo is a single HTML file the user double-clicks. Either way, no thinking required to start it.
 3. **No persistence by default.** State lives in memory. Persistence is the thing the prototype is _checking_, not something it should depend on. If the question explicitly involves a database, hit a scratch DB or a local file with a clear "PROTOTYPE, wipe me" name.
 4. **Skip the polish.** No tests, no error handling beyond what makes the prototype _runnable_, no abstractions. The point is to learn something fast.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Run on the job computer, in the project checkout. Writes the issue file the worker reads,
-# makes the issue branch or switches to the open PR's branch, and prints the branch name.
-# Usage: prepare-issue.sh <issue> <out-file> [<branch>]   Needs GH_TOKEN and GITHUB_REPOSITORY_OWNER.
+# Usage: prepare-issue.sh <issue> <out-file> <worktree> [<branch>]
+# Run inside the project checkout with GH_TOKEN, GITHUB_REPOSITORY, and GITHUB_REPOSITORY_OWNER.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 issue="$1"
 out="$2"
-existing="${3:-}"
+worktree="$3"
+existing="${4:-}"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
 
@@ -26,11 +26,11 @@ fi
 
 if [ -n "$existing" ]; then
   git fetch --quiet origin "+refs/heads/$existing:refs/remotes/origin/$existing"
-  git switch --quiet --create "$existing" "origin/$existing"
+  git worktree add --quiet -b "$existing" "$worktree" "origin/$existing"
   echo "$existing"
   exit 0
 fi
 slug=$(jq -r .title <<<"$json" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40 | sed -E 's/-+$//')
 branch="issue-$issue-$slug"
-git switch --create "$branch"
+git worktree add --quiet -b "$branch" "$worktree" HEAD
 echo "$branch"

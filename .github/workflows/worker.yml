@@ -82,7 +82,7 @@ jobs:
         run: |
           names=$(claude -p "List the names of every skill available to you, one per line, nothing else." --model haiku --max-turns 1)
           echo "$names"
-          for skill in pstack:poteto-mode architect tdd code-review impeccable principle-prove-it-works; do
+          for skill in pstack:poteto-mode worktree architect tdd code-review impeccable principle-prove-it-works; do
             grep -q "$skill" <<<"$names" || { echo "Claude does not see the skill $skill."; exit 1; }
           done
 
@@ -117,13 +117,6 @@ jobs:
           echo "$out"
           grep -qx "OK" <<<"$out" && ! grep -q "Not logged in" <<<"$out" || { echo "A claude -p inside the worker cannot sign in."; exit 1; }
 
-      - name: Project setup
-        run: bash "${{ inputs.setup }}"
-
-      - name: Project proof
-        if: inputs.issue == '0'
-        run: bash "${{ inputs.proof }}"
-
       - name: Prepare the issue
         id: prepare
         if: inputs.issue != '0'
@@ -135,11 +128,21 @@ jobs:
           git config user.name "software-factory worker"
           git config user.email "72827154+Jahazel@users.noreply.github.com"
           mkdir -p "$RUNNER_TEMP/worker"
-          branch=$(bash "$RUNNER_TEMP/factory/scripts/prepare-issue.sh" "${{ inputs.issue }}" "$RUNNER_TEMP/worker/issue.md" "${{ inputs.branch }}")
+          branch=$(bash "$RUNNER_TEMP/factory/scripts/prepare-issue.sh" "${{ inputs.issue }}" "$RUNNER_TEMP/worker/issue.md" "$RUNNER_TEMP/project-worktree" "${{ inputs.branch }}")
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "worktree=$RUNNER_TEMP/project-worktree" >> "$GITHUB_OUTPUT"
+
+      - name: Project setup
+        working-directory: ${{ steps.prepare.outputs.worktree || github.workspace }}
+        run: bash "${{ inputs.setup }}"
+
+      - name: Project proof
+        if: inputs.issue == '0'
+        run: bash "${{ inputs.proof }}"
 
       - name: Work the issue
         if: inputs.issue != '0'
+        working-directory: ${{ steps.prepare.outputs.worktree }}
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
@@ -165,7 +168,7 @@ jobs:
         with:
           name: proof-${{ github.run_id }}
           path: |
-            ${{ inputs.proof-path }}
+            ${{ steps.prepare.outputs.worktree || github.workspace }}/${{ inputs.proof-path }}
             ${{ runner.temp }}/worker/
           retention-days: 7
           if-no-files-found: warn
