@@ -1,5 +1,5 @@
-# Merges main into the open factory PRs, decides which labeled issues get a worker, runs one worker
-# per claimed issue, and always releases the claims. A project repo calls this file when the owner
+# Merges main into the open factory PRs, decides which PRs need a resolve worker and which labeled
+# issues get a worker, runs one worker per claimed job, and always releases the claims. A project repo calls this file when the owner
 # adds a label and when main moves.
 name: Orchestrator
 

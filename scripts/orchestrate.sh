@@ -77,11 +77,11 @@ refresh() {
   # Logs a decision for PR $1 with reason $2. When a place is free, writes a resolve job to fd 3
   # and uses the place. Reads issue, branch, main, and free from refresh.
   resolve_job() {
-    if [ "$DRY_RUN" = true ]; then decide "PR #$1" "would resolve" "$2; a worker would merge main"
-    elif [ "$free" -le 0 ]; then decide "PR #$1" hold "$2; needs a resolve worker; cap reached"
+    if [ "$free" -le 0 ]; then decide "PR #$1" hold "$2; needs a resolve worker; cap reached"
     else
       free=$(( free - 1 ))
-      decide "PR #$1" resolve "$2; a worker merges main"
+      if [ "$DRY_RUN" = true ]; then decide "PR #$1" "would resolve" "$2; a worker would merge main"
+      else decide "PR #$1" resolve "$2; a worker merges main"; fi
       jq -cn --argjson issue "$issue" --arg branch "$branch" --argjson pr "$1" --arg main "$main" \
         '{issue: $issue, branch: $branch, pr: $pr, main: $main}' >&3
     fi
@@ -108,7 +108,7 @@ refresh() {
       201|204)
         if [ "$status" = 201 ]; then decide "PR #$pr" refresh "merged main into $branch; checks run again"
         else decide "PR #$pr" refresh "up to date"; fi
-        repeated=$(repeated_migrations "$branch")
+        repeated=$(repeated_migrations "$branch") || repeated=""
         [ -z "$repeated" ] || resolve_job "$pr" "repeated migration number in $repeated"
         ;;
       409)
@@ -173,7 +173,7 @@ claim() {
   local job
   while read -r job; do
     [ -n "$job" ] || continue
-    gh issue edit "$(jq .issue <<<"$job")" --repo "$repo" --add-label agent:in-progress >/dev/null
+    gh issue edit "$(jq .issue <<<"$job")" --repo "$repo" --add-label agent:in-progress >/dev/null || continue
     echo "$job"
   done
 }
@@ -183,5 +183,6 @@ running=$(gh issue list --repo "$repo" --state open --label agent:in-progress --
 summary_header
 resolves=$(refresh 3>&1 >&2)
 started=$(pick "$(grep -c . <<<"$resolves" || true)" | plan | jq -c '{issue: ., branch: ""}')
-jobs=$(printf '%s\n%s\n' "$resolves" "$started" | claim)
+# A dry run counts the places resolve jobs would take, but claims and starts nothing.
+if [ "$DRY_RUN" = true ]; then jobs=""; else jobs=$(printf '%s\n%s\n' "$resolves" "$started" | claim); fi
 echo "jobs=$(jq -sc . <<<"$jobs")" >> "${GITHUB_OUTPUT:-/dev/stdout}"

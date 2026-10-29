@@ -47,14 +47,16 @@ repeated_numbers() {
   sed -nE 's/^([0-9]+)_.*/\1/p' | sort | uniq -d
 }
 
-# Prints "<path>: <numbers>" for each AGENT_CONFLICTS path on branch $1 that holds two files with
-# the same leading number. A clean merge can bring in such a pair with no text conflict.
+# Prints "<path>: <numbers>" for each AGENT_CONFLICTS path where branch $1 repeats a leading file
+# number that main does not repeat. A clean merge can bring in such a pair with no text conflict.
+# Returns 1 when a folder cannot be read.
 repeated_migrations() {
-  local prefix prefixes numbers
+  local prefix prefixes on_branch on_main numbers
   read -ra prefixes <<<"${AGENT_CONFLICTS:-}"
   for prefix in ${prefixes[@]+"${prefixes[@]}"}; do
-    numbers=$(gh api "repos/$GITHUB_REPOSITORY/contents/${prefix%/}?ref=$1" --jq '.[] | select(.type == "file") | .name' 2>/dev/null \
-      | repeated_numbers | paste -sd, - | sed 's/,/, /g' || true)
+    on_branch=$(gh api "repos/$GITHUB_REPOSITORY/contents/${prefix%/}?ref=$1" --jq '.[] | select(.type == "file") | .name' | repeated_numbers) || return 1
+    on_main=$(gh api "repos/$GITHUB_REPOSITORY/contents/${prefix%/}?ref=main" --jq '.[] | select(.type == "file") | .name' | repeated_numbers) || return 1
+    numbers=$(comm -23 <(grep . <<<"$on_branch" || true) <(grep . <<<"$on_main" || true) | paste -sd, - | sed 's/,/, /g')
     [ -z "$numbers" ] || echo "$prefix: $numbers"
   done
 }
@@ -74,16 +76,16 @@ Merge main by hand, then remove \`agent:blocked\` from this PR." >/dev/null || r
 
 # Checks a resolve job's PR $1 on branch $2 after its worker ended. The branch must hold main as of
 # decide ($3) and no repeated migration number. Otherwise the PR is blocked, so the next refresh
-# does not start the same paid resolve worker again. $4 is the run link.
+# does not start the same paid resolve worker again. $4 is the run link. Returns 1 when GitHub
+# cannot answer; nothing is blocked then.
 settle_resolve() {
-  local pr="$1" branch="$2" main="$3" run_url="$4" missing repeated
-  if [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr" --jq '[.labels[].name] | index("agent:blocked") != null')" = true ]; then
-    echo "PR #$pr: resolve worker blocked it"; return
-  fi
-  missing=$(gh api "repos/$GITHUB_REPOSITORY/compare/$branch...$main" --jq .ahead_by)
-  repeated=$(repeated_migrations "$branch")
+  local pr="$1" branch="$2" main="$3" run_url="$4" blocked missing repeated
+  blocked=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr" --jq '[.labels[].name] | index("agent:blocked") != null') || return 1
+  if [ "$blocked" = true ]; then echo "PR #$pr: resolve worker blocked it"; return; fi
+  missing=$(gh api "repos/$GITHUB_REPOSITORY/compare/$branch...$main" --jq .ahead_by) || return 1
+  repeated=$(repeated_migrations "$branch") || return 1
   if [ "$missing" = 0 ] && [ -z "$repeated" ]; then echo "PR #$pr: resolved"; return; fi
-  block_pr "$pr" "Factory resolve worker did not finish: the branch is still missing main or repeats a migration number. Run: $run_url"
+  block_pr "$pr" "Factory resolve worker did not finish: the branch is still missing main or repeats a migration number. Run: $run_url" || return 1
   echo "PR #$pr: resolve worker did not finish; added agent:blocked"
 }
 
