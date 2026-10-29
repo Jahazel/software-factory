@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Usage: prepare-issue.sh <issue> <out-file> <worktree> [<branch>]
+# Run inside the project checkout with GH_TOKEN, GITHUB_REPOSITORY, and GITHUB_REPOSITORY_OWNER.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 issue="$1"
