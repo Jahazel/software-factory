@@ -64,8 +64,9 @@ Select one playbook from the task's outcome. Open it and copy its steps to the c
 | Change structure while preserving behavior. | [Refactoring](playbooks/refactoring.md). |
 | Open authorized changes for review after checks. | [Opening a PR](playbooks/opening-a-pr.md). |
 | Fix or report on an open PR when the user asks. | [Babysit](playbooks/babysit.md). |
+| Test whether a change to a skill, prompt, instruction file, or code structure makes agents behave better before keeping it. | [Eval](playbooks/eval.md). |
 
-Planning, Design, and Investigation wait for the user's implementation request before changing real code. Their decision output does not itself require a PR. Implementation playbooks use Opening a PR within the task's authorization.
+Planning, Design, Investigation, and Eval wait for the user's implementation request before changing real code. Their decision output does not itself require a PR. Implementation playbooks use Opening a PR within the task's authorization.
 
 ## Writing the reply
 
