@@ -7,7 +7,7 @@ Use the current harness's validated `pstack-models.md` and loaded model instruct
 | Narrow fact collection and obvious edits. | GPT-6 Luna, intended identifier `gpt-6-luna`. | Haiku 5.5. | Medium. |
 | Ordinary work, interpretation, and dependent code changes. | The user's GPT-6.1 model. | Sonnet 5.5. | Medium. |
 | Hard diagnosis, design choices, and complex review. | The user's GPT-6.1 model. | Opus 5.5. | Medium. |
-| Independent code review in the opposite app. | The user's GPT-6.1 model. | Opus 5.5. | High. |
+| Independent code review in a separate Claude Code process. | The user's GPT-6.1 model. | Opus 5.5. | High. |
 
 Confirm exact accepted identifiers and model availability before later setup. Confirm that Claude's available Opus selection provides the approved model. Do not silently replace an unavailable selection. Use only supported model and effort controls.
 
