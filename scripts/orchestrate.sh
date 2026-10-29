@@ -147,7 +147,7 @@ pick() {
       blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
         --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g') &&
       open_pr=$(closing_pr "$n"); }; then
-      decide "#$n" skip "could not read the issue from GitHub; the next run retries"; continue
+      decide "#$n" error "the issue could not be read; the next run retries"; continue
     fi
 
     reason=$(jq -c --arg owner "$owner" --arg labeler "$labeler" --arg open_pr "$open_pr" --arg blockers "$blockers" \

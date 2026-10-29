@@ -21,7 +21,7 @@ check() {
   if [ "$got" = "$want" ]; then echo "ok: $name"
   else printf 'FAIL: %s\n  want [%s]\n  got  [%s]\n' "$name" "$want" "$got"; fails=1; fi
 }
-skip="#7: skip (could not read the issue from GitHub; the next run retries)"
+skip="#7: error (the issue could not be read; the next run retries)"
 FAIL=none check "an issue that passes every rule is a candidate" "7"
 FAIL=issue check "a failed issue read skips the issue" "$skip"
 FAIL=events check "a failed label-history read skips the issue" "$skip"
