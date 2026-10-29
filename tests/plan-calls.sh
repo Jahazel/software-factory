@@ -12,6 +12,7 @@ planner_holds() {
   echo "$HOLDS"
 }
 fails=0
+cands="" running=0 reserved=0 busy="[]"
 check() {
   local name="$1" out starts log
   : > "$calls"

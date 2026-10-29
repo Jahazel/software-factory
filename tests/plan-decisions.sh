@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib.sh"
 export AGENT_CONFLICTS="migrations/"
 fails=0
+cands="" free=0 holds="[]"
 busy='[{"kind":"pr","issue":350,"pr":381,"title":"Security headers","files":["next.config.ts","migrations/0017_x.sql"]},
        {"kind":"worker","issue":355,"pr":null,"title":"Login copy","files":[]}]'
 check() {
