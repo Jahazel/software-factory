@@ -52,33 +52,45 @@ merge_main() {
 # Reuses one clone per run.
 conflict_paths() {
   local dir="${RUNNER_TEMP:-/tmp}/caller"
-  [ -d "$dir" ] || git clone --quiet --filter=blob:none "https://github.com/$repo" "$dir"
-  git -C "$dir" fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" "+refs/heads/$1:refs/remotes/origin/$1"
-  git -C "$dir" checkout --quiet --detach "origin/$1"
+  [ -d "$dir" ] || git clone --quiet --filter=blob:none "https://github.com/$repo" "$dir" || return 1
+  git -C "$dir" fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" "+refs/heads/$1:refs/remotes/origin/$1" || return 1
+  git -C "$dir" checkout --quiet --detach "origin/$1" || return 1
   git -C "$dir" -c user.name=factory -c user.email=factory@invalid merge --quiet --no-commit --no-ff origin/main >/dev/null 2>&1 || true
   git -C "$dir" diff --name-only --diff-filter=U
   git -C "$dir" merge --abort 2>/dev/null || git -C "$dir" reset --quiet --hard
 }
 
-# Comments once on PR $1 with the paths $2 and adds agent:blocked to it. Refresh skips a PR with
-# that label, so the comment is not repeated.
+# Comments on PR $1 with the paths $2, unless a refresh comment is already there, and adds
+# agent:blocked to it. Safe to run again after a partial failure.
 block_pr() {
-  gh api "repos/$repo/issues/$1/comments" -f body="Factory refresh blocked: merging main into this branch conflicts in $2.
+  local prefix="Factory refresh blocked:" comments
+  comments=$(gh api --paginate "repos/$repo/issues/$1/comments" --jq '.[].body') || return 1
+  if ! grep -qF "$prefix" <<<"$comments"; then
+    gh api "repos/$repo/issues/$1/comments" -f body="$prefix merging main into this branch conflicts in $2.
 
-Merge main by hand, then remove \`agent:blocked\` from this PR." >/dev/null
+Merge main by hand, then remove \`agent:blocked\` from this PR." >/dev/null || return 1
+  fi
   gh api "repos/$repo/issues/$1/labels" -f 'labels[]=agent:blocked' >/dev/null
 }
 
 # Brings each factory PR up to date with main, so its strict required checks can pass again.
 # A PR whose issue a worker has is left alone. A conflict only under AGENT_CONFLICTS is reported
-# for the resolve worker; any other conflict blocks the PR for the owner.
+# for the resolve worker; any other conflict blocks the PR for the owner. A failed GitHub call is
+# logged for that PR and never stops the run, so the issues are still picked.
 refresh() {
-  local pr issue branch blocked status paths shown
+  local prs pr issue branch blocked worker status paths shown
+  if ! prs=$(factory_prs); then
+    echo "::warning::Factory PR refresh skipped: the open PRs could not be listed."
+    decide "PRs" error "the open factory PRs could not be listed; the next run retries"
+    return 0
+  fi
   while read -r pr issue branch blocked; do
+    [ -n "$pr" ] || continue
     if [ "$blocked" = true ]; then decide "PR #$pr" skip "has agent:blocked"; continue; fi
-    if [ "$(gh issue view "$issue" --repo "$repo" --json labels --jq '[.labels[].name] | index("agent:in-progress") != null')" = true ]; then
-      decide "PR #$pr" skip "a worker has #$issue"; continue
+    if ! worker=$(gh issue view "$issue" --repo "$repo" --json labels --jq '[.labels[].name] | index("agent:in-progress") != null'); then
+      decide "PR #$pr" error "the labels of #$issue could not be read; the next run retries"; continue
     fi
+    if [ "$worker" = true ]; then decide "PR #$pr" skip "a worker has #$issue"; continue; fi
     if [ "$DRY_RUN" = true ]; then decide "PR #$pr" "would refresh" "would merge main into $branch"; continue; fi
     status=$(merge_main "$branch")
     case "$status" in
@@ -93,13 +105,16 @@ refresh() {
         if [ "$(classify_conflict <<<"$paths")" = agent ]; then
           decide "PR #$pr" "would resolve" "conflict only in $AGENT_CONFLICTS: $shown; the resolve worker is not built yet"
         else
-          block_pr "$pr" "$(paste -sd, - <<<"$paths" | sed 's/,/, /g')"
-          decide "PR #$pr" blocked "conflict in $shown; the owner merges main by hand"
+          if block_pr "$pr" "$(paste -sd, - <<<"$paths" | sed 's/,/, /g')"; then
+            decide "PR #$pr" blocked "conflict in $shown; the owner merges main by hand"
+          else
+            decide "PR #$pr" error "conflict in $shown, but the PR could not be blocked; the next run retries"
+          fi
         fi
         ;;
       *) decide "PR #$pr" error "merges API returned ${status:-no status}; the next run retries" ;;
     esac
-  done < <(factory_prs)
+  done <<<"$prs"
 }
 
 # Prints the issues to start, one per line, after the skip rules and the cap.

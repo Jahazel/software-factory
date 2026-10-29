@@ -28,11 +28,12 @@ factory_prs() {
 # Reads conflicting paths on stdin. Prints "agent" when the list is not empty and every path starts
 # with one of the space-separated prefixes in AGENT_CONFLICTS, else "owner".
 classify_conflict() {
-  local path prefix any=false matched
+  local path prefix prefixes any=false matched
+  read -ra prefixes <<<"${AGENT_CONFLICTS:-}"
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     any=true matched=false
-    for prefix in ${AGENT_CONFLICTS:-}; do
+    for prefix in ${prefixes[@]+"${prefixes[@]}"}; do
       [[ "$path" == "$prefix"* ]] && matched=true
     done
     [ "$matched" = true ] || { echo owner; return; }

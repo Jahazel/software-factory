@@ -16,4 +16,5 @@ check owner "migrations/" ''
 check owner "" $'migrations/0042_a.sql\n'
 check agent "migrations/ drizzle/" $'migrations/0042_a.sql\ndrizzle/meta/x.json\n'
 check owner "migrations/" $'old-migrations/0042_a.sql\n'
+check owner "migrations/*" $'migrations/0042_a.sql\n'
 exit "$fails"
