@@ -1,0 +1,54 @@
+# Decides which labeled issues get a worker. A project repo calls this file when the owner adds a label.
+# Dry run only for now: it reports its decisions and changes nothing.
+name: Orchestrator
+
+on:
+  workflow_call:
+    inputs:
+      cap:
+        description: Largest number of workers at the same time
+        type: number
+        default: 1
+      dry-run:
+        type: boolean
+        default: true
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One orchestrator at a time per project, so two label events cannot both take the last free place.
+    concurrency:
+      group: factory-orchestrator-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      # No API key fallback: when the subscription sign-in fails, the orchestrator stops and changes no labels.
+      - name: Check Claude sign-in
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: claude -p "Reply with the single word OK." --model haiku --max-turns 1
+
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAP: ${{ inputs.cap }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: bash "$RUNNER_TEMP/factory/scripts/orchestrate.sh"
