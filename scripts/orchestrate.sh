@@ -108,7 +108,7 @@ refresh() {
       201|204)
         if [ "$status" = 201 ]; then decide "PR #$pr" refresh "merged main into $branch; checks run again"
         else decide "PR #$pr" refresh "up to date"; fi
-        repeated=$(repeated_migrations "$branch") || repeated=""
+        repeated=$(repeated_migrations "$branch") || { repeated=""; decide "PR #$pr" error "the folders in $AGENT_CONFLICTS could not be read; repeated migration numbers not checked"; }
         [ -z "$repeated" ] || resolve_job "$pr" "repeated migration number in $repeated"
         ;;
       409)

@@ -83,8 +83,10 @@ settle_resolve() {
   blocked=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr" --jq '[.labels[].name] | index("agent:blocked") != null') || return 1
   if [ "$blocked" = true ]; then echo "PR #$pr: resolve worker blocked it"; return; fi
   missing=$(gh api "repos/$GITHUB_REPOSITORY/compare/$branch...$main" --jq .ahead_by) || return 1
-  repeated=$(repeated_migrations "$branch") || return 1
-  if [ "$missing" = 0 ] && [ -z "$repeated" ]; then echo "PR #$pr: resolved"; return; fi
+  if [ "$missing" = 0 ]; then
+    repeated=$(repeated_migrations "$branch") || return 1
+    if [ -z "$repeated" ]; then echo "PR #$pr: resolved"; return; fi
+  fi
   block_pr "$pr" "Factory resolve worker did not finish: the branch is still missing main or repeats a migration number. Run: $run_url" || return 1
   echo "PR #$pr: resolve worker did not finish; added agent:blocked"
 }
