@@ -15,6 +15,7 @@ check "not opened by the owner" "not opened by the owner" '{"author": "someone"}
 check "label added by someone else" "label not added by the owner" '{"labeler": "someone"}'
 check "a gardening report" "a gardening report; the gardener's PR is its work" '{"labels": ["agent:implement", "gardening:report"]}'
 check "a person must do the work" "has ready-for-human" '{"labels": ["agent:implement", "ready-for-human"]}'
+check "a label first in the list still counts" "has ready-for-human" '{"labels": ["ready-for-human", "agent:implement"]}'
 check "a parent issue or spec" "has 3 sub-issues" '{"sub_issues": 3}'
 check "blocked label" "has agent:blocked" '{"labels": ["agent:implement", "agent:blocked"]}'
 check "already claimed" "a worker already has it" '{"labels": ["agent:implement", "agent:in-progress"]}'

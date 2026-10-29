@@ -139,14 +139,16 @@ pick() {
   local n issue labeler blockers open_pr reason
 
   for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json number --jq 'sort_by(.number) | .[].number'); do
-    issue=$(gh api "repos/$repo/issues/$n")
-    # Who added the trigger label last. Only the owner's label counts.
-    labeler=$(gh api --paginate "repos/$repo/issues/$n/events" \
-      --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$trigger\")] | last | .actor.login // \"\"" | tail -1)
-    # Open issues that GitHub lists under "Blocked by". Work on a blocked issue waits for them.
-    blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
-      --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g')
-    open_pr=$(closing_pr "$n")
+    if ! { issue=$(gh api "repos/$repo/issues/$n") &&
+      # Who added the trigger label last. Only the owner's label counts.
+      labeler=$(gh api --paginate "repos/$repo/issues/$n/events" \
+        --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$trigger\")] | last | .actor.login // \"\"" | tail -1) &&
+      # Open issues that GitHub lists under "Blocked by". Work on a blocked issue waits for them.
+      blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
+        --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g') &&
+      open_pr=$(closing_pr "$n"); }; then
+      decide "#$n" skip "could not read the issue from GitHub; the next run retries"; continue
+    fi
 
     reason=$(jq -c --arg owner "$owner" --arg labeler "$labeler" --arg open_pr "$open_pr" --arg blockers "$blockers" \
       '{owner: $owner, author: .user.login, labeler: $labeler, labels: [.labels[].name],

@@ -5,9 +5,9 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 |---|---|
 | `.github/workflows/worker.yml` | The reusable worker job. It runs the project's `.factory/setup.sh`, `.factory/smoke.sh`, and `.factory/worker-rules.md` unless the caller names other paths. |
 | `.github/workflows/orchestrator.yml` | The reusable orchestrator. A project calls it when the owner adds a label. It merges main into the open factory PRs, claims issues, runs one worker each, and always releases the claims. |
-| `scripts/orchestrate.sh` | The orchestrator's fixed steps: the PR refresh, skip rules, the planner and the cap, one decision per PR or labeled issue, and the claim. |
+| `scripts/orchestrate.sh` | The orchestrator's fixed steps: the PR refresh, the facts for the skip rules, the planner and the cap, one decision per PR or labeled issue, and the claim. |
 | `scripts/settle.sh` | Checks each resolve job's PR, releases each claim after the workers end, then starts the orchestrator again. |
-| `scripts/lib.sh` | Rules the orchestrator and settle share: issue briefs, factory PRs, open PR check, conflict classes, planner answer checks and plan decisions, repeated migration numbers, PR blocks, resolve checks, and claim release. |
+| `scripts/lib.sh` | Rules the orchestrator and settle share: skip rules, issue briefs, factory PRs, open PR check, conflict classes, planner answer checks and plan decisions, repeated migration numbers, PR blocks, resolve checks, and claim release. |
 | `prompts/worker.md` | The worker prompt. The project adds its own rules file. |
 | `prompts/resolve.md` | The resolve worker prompt: merge main into an open factory PR, fix a conflict or repeated migration number the project rules allow, push. |
 | `prompts/planner.md`, `prompts/planner.schema.json` | The planner prompt and its answer shape: which candidate issues to hold because they would change the same files as work in flight. |
