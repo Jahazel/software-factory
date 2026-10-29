@@ -9,8 +9,10 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `scripts/settle.sh` | Releases each claim after the workers end, then starts the orchestrator again. |
 | `scripts/lib.sh` | Rules the orchestrator and settle share: factory PRs, open PR check, conflict classes, and claim release. |
 | `prompts/worker.md` | The worker prompt. The project adds its own rules file. |
+| `prompts/resolve.md` | The resolve worker prompt: merge main into an open factory PR, fix a conflict or repeated migration number the project rules allow, push. |
+| `prompts/merge-main.md` | The "Merge the newest main" steps that both prompts include. |
 | `scripts/prepare-issue.sh` | Writes the issue file the worker reads and makes the issue branch. |
-| `tests/` | Plain bash tests for the pure rules. Run `bash tests/classify-conflict.sh`. |
+| `tests/` | Plain bash tests for the pure rules. Run `for t in tests/*.sh; do bash "$t"; done`. |
 | `claude/` | A copy of pstack, the router hook, the model rules, and the owner's skills, laid out like `~/.claude`. |
 | `scripts/sync-claude.sh` | Run on the owner's Mac to refresh `claude/` from `~/.claude`. |
 | `scripts/install-claude.sh` | Runs on the job computer. Installs `claude/` into `~/.claude`, adds third-party skills, and turns pstack on. |

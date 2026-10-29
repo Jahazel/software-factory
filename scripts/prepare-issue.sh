@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Run on the job computer, in the project checkout. Writes the issue file the worker reads,
-# makes the issue branch, and prints the branch name for later steps.
-# Usage: prepare-issue.sh <issue> <out-file>   Needs GH_TOKEN and GITHUB_REPOSITORY_OWNER.
+# makes the issue branch or switches to the open PR's branch, and prints the branch name.
+# Usage: prepare-issue.sh <issue> <out-file> [<branch>]   Needs GH_TOKEN and GITHUB_REPOSITORY_OWNER.
 set -euo pipefail
 issue="$1"
 out="$2"
+existing="${3:-}"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
 
@@ -33,6 +34,12 @@ fi
   jq -r --arg owner "$owner" '.comments[] | select(.author.login == $owner) | "\n## \(.createdAt)\n\n\(.body)"' <<<"$json"
 } > "$out"
 
+if [ -n "$existing" ]; then
+  git fetch --quiet origin "+refs/heads/$existing:refs/remotes/origin/$existing"
+  git switch --quiet --create "$existing" "origin/$existing"
+  echo "$existing"
+  exit 0
+fi
 slug=$(jq -r .title <<<"$json" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40 | sed -E 's/-+$//')
 branch="issue-$issue-$slug"
 git switch --create "$branch"

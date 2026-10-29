@@ -5,7 +5,9 @@
 # lost or repeated event changes nothing.
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER,
 # GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, CAP, DRY_RUN, AGENT_CONFLICTS (space-separated path prefixes,
-# may be empty). Writes issues=<JSON array of claimed issues> to GITHUB_OUTPUT.
+# may be empty). Writes jobs=<JSON array of claimed jobs> to GITHUB_OUTPUT. A job is
+# {"issue":n,"branch":""} for new work, or {"issue":n,"branch":b,"pr":p,"main":sha} for a resolve
+# worker that merges main into the open PR p on branch b.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 repo="$GITHUB_REPOSITORY"
@@ -60,25 +62,30 @@ conflict_paths() {
   git -C "$dir" merge --abort 2>/dev/null || git -C "$dir" reset --quiet --hard
 }
 
-# Comments on PR $1 with the paths $2, unless the same comment is already there, and adds
-# agent:blocked to it. Safe to run again after a partial failure.
-block_pr() {
-  local first="Factory refresh blocked: merging main into this branch conflicts in $2." comments
-  comments=$(gh api --paginate "repos/$repo/issues/$1/comments" --jq '.[].body') || return 1
-  if ! grep -qxF "$first" <<<"$comments"; then
-    gh api "repos/$repo/issues/$1/comments" -f body="$first
-
-Merge main by hand, then remove \`agent:blocked\` from this PR." >/dev/null || return 1
-  fi
-  gh api "repos/$repo/issues/$1/labels" -f 'labels[]=agent:blocked' >/dev/null
-}
-
 # Brings each factory PR up to date with main, so its strict required checks can pass again.
-# A PR whose issue a worker has is left alone. A conflict only under AGENT_CONFLICTS is reported
-# for the resolve worker; any other conflict blocks the PR for the owner. A failed GitHub call is
-# logged for that PR and never stops the run, so the issues are still picked.
+# A PR whose issue a worker has is left alone. A conflict only under AGENT_CONFLICTS, or a repeated
+# migration number there, gets a resolve job on fd 3 while places are free; any other conflict
+# blocks the PR for the owner. A failed GitHub call is logged for that PR and never stops the run,
+# so the issues are still picked.
 refresh() {
-  local prs pr issue branch blocked worker status paths shown
+  local prs pr issue branch blocked worker status paths shown repeated main free=$(( CAP - running ))
+  # Resolve jobs name this main, so settle can check that the worker merged it.
+  if ! main=$(gh api "repos/$repo/commits/main" --jq .sha); then
+    decide "PRs" error "main could not be read; the next run retries"
+    return 0
+  fi
+  # Logs a decision for PR $1 with reason $2. When a place is free, writes a resolve job to fd 3
+  # and uses the place. Reads issue, branch, main, and free from refresh.
+  resolve_job() {
+    if [ "$DRY_RUN" = true ]; then decide "PR #$1" "would resolve" "$2; a worker would merge main"
+    elif [ "$free" -le 0 ]; then decide "PR #$1" hold "$2; needs a resolve worker; cap reached"
+    else
+      free=$(( free - 1 ))
+      decide "PR #$1" resolve "$2; a worker merges main"
+      jq -cn --argjson issue "$issue" --arg branch "$branch" --argjson pr "$1" --arg main "$main" \
+        '{issue: $issue, branch: $branch, pr: $pr, main: $main}' >&3
+    fi
+  }
   if ! prs=$(factory_prs); then
     echo "::warning::Factory PR refresh skipped: the open PRs could not be listed."
     decide "PRs" error "the open factory PRs could not be listed; the next run retries"
@@ -91,11 +98,19 @@ refresh() {
       decide "PR #$pr" error "the labels of #$issue could not be read; the next run retries"; continue
     fi
     if [ "$worker" = true ]; then decide "PR #$pr" skip "a worker has #$issue"; continue; fi
-    if [ "$DRY_RUN" = true ]; then decide "PR #$pr" "would refresh" "would merge main into $branch"; continue; fi
-    status=$(merge_main "$branch")
+    if [ "$DRY_RUN" = true ]; then
+      status=$(gh api "repos/$repo/compare/$branch...main" --jq 'if .ahead_by == 0 then 204 else 201 end')
+      [ "$status" = 204 ] || { decide "PR #$pr" "would refresh" "would merge main into $branch"; continue; }
+    else
+      status=$(merge_main "$branch")
+    fi
     case "$status" in
-      201) decide "PR #$pr" refresh "merged main into $branch; checks run again" ;;
-      204) decide "PR #$pr" refresh "up to date" ;;
+      201|204)
+        if [ "$status" = 201 ]; then decide "PR #$pr" refresh "merged main into $branch; checks run again"
+        else decide "PR #$pr" refresh "up to date"; fi
+        repeated=$(repeated_migrations "$branch")
+        [ -z "$repeated" ] || resolve_job "$pr" "repeated migration number in $repeated"
+        ;;
       409)
         if ! paths=$(conflict_paths "$branch") || [ -z "$paths" ]; then
           decide "PR #$pr" error "merges API returned 409, but the conflicting paths could not be listed; the next run retries"
@@ -103,9 +118,9 @@ refresh() {
         fi
         shown=$(head -3 <<<"$paths" | paste -sd, - | sed 's/,/, /g')
         if [ "$(classify_conflict <<<"$paths")" = agent ]; then
-          decide "PR #$pr" "would resolve" "conflict only in $AGENT_CONFLICTS: $shown; the resolve worker is not built yet"
+          resolve_job "$pr" "conflict only in $AGENT_CONFLICTS: $shown"
         else
-          if block_pr "$pr" "$(paste -sd, - <<<"$paths" | sed 's/,/, /g')"; then
+          if block_pr "$pr" "Factory refresh blocked: merging main into this branch conflicts in $(paste -sd, - <<<"$paths" | sed 's/,/, /g')."; then
             decide "PR #$pr" blocked "conflict in $shown; the owner merges main by hand"
           else
             decide "PR #$pr" error "conflict in $shown, but the PR could not be blocked; the next run retries"
@@ -117,9 +132,10 @@ refresh() {
   done <<<"$prs"
 }
 
-# Prints the issues to start, one per line, after the skip rules and the cap.
+# Prints the issues to start, one per line, after the skip rules and the cap. $1 is the number of
+# resolve jobs from refresh; they take their places first.
 pick() {
-  local free=$(( CAP - running )) n issue labels labeler
+  local free=$(( CAP - running - $1 )) n issue labels labeler
 
   for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json number --jq 'sort_by(.number) | .[].number'); do
     issue=$(gh issue view "$n" --repo "$repo" --json author,labels)
@@ -151,18 +167,21 @@ pick() {
 # The task 7 planner goes here. It reads the issues to start and prints the ones that start now.
 plan() { cat; }
 
-# Adds agent:in-progress with github.token, so the label change starts no workflow.
+# Reads job lines. Adds agent:in-progress to each job's issue with github.token, so the label
+# change starts no workflow, and prints the job line. A resolve job claims the issue of its PR.
 claim() {
-  local n
-  while read -r n; do
-    gh issue edit "$n" --repo "$repo" --add-label agent:in-progress >/dev/null
-    echo "$n"
+  local job
+  while read -r job; do
+    [ -n "$job" ] || continue
+    gh issue edit "$(jq .issue <<<"$job")" --repo "$repo" --add-label agent:in-progress >/dev/null
+    echo "$job"
   done
 }
 
 sweep
 running=$(gh issue list --repo "$repo" --state open --label agent:in-progress --json number --jq length)
 summary_header
-refresh
-started=$(pick | plan | claim)
-echo "issues=$(jq -cn '[$ARGS.positional[] | tonumber]' --args $started)" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+resolves=$(refresh 3>&1 >&2)
+started=$(pick "$(grep -c . <<<"$resolves" || true)" | plan | jq -c '{issue: ., branch: ""}')
+jobs=$(printf '%s\n%s\n' "$resolves" "$started" | claim)
+echo "jobs=$(jq -sc . <<<"$jobs")" >> "${GITHUB_OUTPUT:-/dev/stdout}"

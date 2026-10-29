@@ -41,7 +41,7 @@ jobs:
       group: factory-orchestrator-${{ github.repository }}
       cancel-in-progress: false
     outputs:
-      issues: ${{ steps.decide.outputs.issues }}
+      jobs: ${{ steps.decide.outputs.jobs }}
     steps:
       - uses: actions/setup-node@v5
         with:
@@ -72,22 +72,23 @@ jobs:
 
   work:
     needs: decide
-    if: needs.decide.outputs.issues != '[]' && needs.decide.outputs.issues != ''
+    if: needs.decide.outputs.jobs != '[]' && needs.decide.outputs.jobs != ''
     strategy:
       fail-fast: false
       matrix:
-        issue: ${{ fromJSON(needs.decide.outputs.issues) }}
+        include: ${{ fromJSON(needs.decide.outputs.jobs) }}
     permissions:
       contents: read
     uses: Jahazel/software-factory/.github/workflows/worker.yml@main
     with:
       issue: ${{ format('{0}', matrix.issue) }}
+      branch: ${{ matrix.branch }}
     secrets: inherit
 
   # A separate computer, so a claim is released even when a worker computer dies.
   settle:
     needs: [decide, work]
-    if: always() && needs.decide.outputs.issues != '[]' && needs.decide.outputs.issues != ''
+    if: always() && needs.decide.outputs.jobs != '[]' && needs.decide.outputs.jobs != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -97,5 +98,6 @@ jobs:
       - name: Release claims and look again
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUES: ${{ needs.decide.outputs.issues }}
+          JOBS: ${{ needs.decide.outputs.jobs }}
+          AGENT_CONFLICTS: ${{ inputs.agent-conflicts }}
         run: bash "$RUNNER_TEMP/factory/scripts/settle.sh"

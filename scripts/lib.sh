@@ -41,6 +41,52 @@ classify_conflict() {
   if [ "$any" = true ]; then echo agent; else echo owner; fi
 }
 
+# Reads file names on stdin. Prints each leading number that two or more names share, such as
+# 0017 for 0017_a.sql and 0017_b.sql. Names that do not start with a digit are ignored.
+repeated_numbers() {
+  sed -nE 's/^([0-9]+)_.*/\1/p' | sort | uniq -d
+}
+
+# Prints "<path>: <numbers>" for each AGENT_CONFLICTS path on branch $1 that holds two files with
+# the same leading number. A clean merge can bring in such a pair with no text conflict.
+repeated_migrations() {
+  local prefix prefixes numbers
+  read -ra prefixes <<<"${AGENT_CONFLICTS:-}"
+  for prefix in ${prefixes[@]+"${prefixes[@]}"}; do
+    numbers=$(gh api "repos/$GITHUB_REPOSITORY/contents/${prefix%/}?ref=$1" --jq '.[] | select(.type == "file") | .name' 2>/dev/null \
+      | repeated_numbers | paste -sd, - | sed 's/,/, /g' || true)
+    [ -z "$numbers" ] || echo "$prefix: $numbers"
+  done
+}
+
+# Comments on PR $1 with the first line $2, unless the same comment is already there, and adds
+# agent:blocked to it. Safe to run again after a partial failure.
+block_pr() {
+  local comments
+  comments=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$1/comments" --jq '.[].body') || return 1
+  if ! grep -qxF "$2" <<<"$comments"; then
+    gh api "repos/$GITHUB_REPOSITORY/issues/$1/comments" -f body="$2
+
+Merge main by hand, then remove \`agent:blocked\` from this PR." >/dev/null || return 1
+  fi
+  gh api "repos/$GITHUB_REPOSITORY/issues/$1/labels" -f 'labels[]=agent:blocked' >/dev/null
+}
+
+# Checks a resolve job's PR $1 on branch $2 after its worker ended. The branch must hold main as of
+# decide ($3) and no repeated migration number. Otherwise the PR is blocked, so the next refresh
+# does not start the same paid resolve worker again. $4 is the run link.
+settle_resolve() {
+  local pr="$1" branch="$2" main="$3" run_url="$4" missing repeated
+  if [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr" --jq '[.labels[].name] | index("agent:blocked") != null')" = true ]; then
+    echo "PR #$pr: resolve worker blocked it"; return
+  fi
+  missing=$(gh api "repos/$GITHUB_REPOSITORY/compare/$branch...$main" --jq .ahead_by)
+  repeated=$(repeated_migrations "$branch")
+  if [ "$missing" = 0 ] && [ -z "$repeated" ]; then echo "PR #$pr: resolved"; return; fi
+  block_pr "$pr" "Factory resolve worker did not finish: the branch is still missing main or repeats a migration number. Run: $run_url"
+  echo "PR #$pr: resolve worker did not finish; added agent:blocked"
+}
+
 # The caller's workflow file, such as factory-orchestrator.yml. Inside a called workflow,
 # GITHUB_WORKFLOW_REF names the caller.
 caller_file() {
