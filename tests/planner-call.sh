@@ -41,6 +41,8 @@ check "the call gets no GitHub token" "" "$(grep -E '^(GH_TOKEN|FACTORY_TOKEN|GI
 check "the call keeps the Claude sign-in" "CLAUDE_CODE_OAUTH_TOKEN=claude-secret" "$(grep '^CLAUDE_CODE_OAUTH_TOKEN=' "$work/env")"
 check "the call has no tools and asks for the schema" "yes" \
   "$(grep -q -- '--tools  --max-turns' "$work/args" && grep -q -- '--json-schema' "$work/args" && echo yes || echo no)"
+check "the call uses Sonnet 5.5 at medium effort" "yes" \
+  "$(grep -q -- '--model claude-sonnet-5-5 --effort medium' "$work/args" && echo yes || echo no)"
 check "the input is the prompt, then the JSON document" '[[7],["src/a.ts","next.config.ts"],["migrations/"]]' \
   "$(sed -n '/^{/,$p' "$work/stdin" | jq -c '[[.candidates[].issue], .tree, .ignore]')"
 check "the prompt comes first" "yes" "$(head -1 "$work/stdin" | grep -q 'software factory' && echo yes || echo no)"
@@ -50,5 +52,5 @@ check "an answer that is not valid JSON fails with a reason" "exit 1: invalid ou
 got=$(run fail) && got="exit 0" || got="exit $?: $(cat "$work/err")"
 check "a failed call fails with a reason" "exit 1: the Claude call failed or timed out" "$got"
 got=$(TREE_FAILS=1 run ok) && got="exit 0" || got="exit $?: $(cat "$work/err")"
-check "a failed GitHub read gives the planner's reason, not GitHub's error text" "exit 1: the files on main could not be listed" "$got"
+check "a failed GitHub read ends with the planner's reason" "the files on main could not be listed" "${got##*$'\n'}"
 exit "$fails"

@@ -75,9 +75,8 @@ valid_holds() {
 
 # Reads {candidates (oldest first), free, busy, holds, failure, dry_run} on stdin; holds is null when
 # the planner failed. Prints one {issue, decision, reason, start} line per candidate, in order.
-# A hold counts only when it names an open PR, a running issue, or an older candidate that is not
-# held itself, and a file outside AGENT_CONFLICTS: so the older issue wins and no two holds wait on
-# each other. When the planner failed, the first candidate starts and the rest hold.
+# A hold on a newer or held candidate is ignored, so the older issue wins and no two holds wait on
+# each other.
 plan_decisions() {
   jq -c --arg ignore "${AGENT_CONFLICTS:-}" '
     def dedupe: reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end);

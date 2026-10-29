@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The orchestrator's fixed steps, as plain code: release dead claims, merge main into the open
 # factory PRs, skip, plan, cap, and claim. Each run looks at all PRs and candidates, so a lost or
-# repeated event changes nothing. Tests source this file; it then only defines the functions.
+# repeated event changes nothing. Tests source this file; it then sets up the functions and globals
+# but runs no step.
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
 # GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, CAP, DRY_RUN, AGENT_CONFLICTS
 # (space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
@@ -184,10 +185,10 @@ busy_items() {
 planner_holds() {
   local tree briefs doc out
   tree=$(gh api "repos/$repo/git/trees/main?recursive=1" \
-    --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("docs/") | not)]' 2>/dev/null) \
+    --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("docs/") | not)]') \
     || { echo "the files on main could not be listed" >&2; return 1; }
   briefs=$(for n in $(jq '.[]' <<<"$1"); do
-      issue_brief "$n" 2>/dev/null | jq -Rsc --argjson n "$n" '{issue: $n, brief: .}' || exit 1
+      issue_brief "$n" | jq -Rsc --argjson n "$n" '{issue: $n, brief: .}' || exit 1
     done | jq -sc .) || { echo "an issue could not be read" >&2; return 1; }
   doc=$(jq -cn --argjson candidates "$briefs" --argjson busy "$2" --argjson tree "$tree" --arg ignore "${AGENT_CONFLICTS:-}" \
     '{candidates: $candidates, busy: $busy, tree: $tree, ignore: ($ignore | split(" ") | map(select(. != "")))}') \
@@ -218,10 +219,11 @@ plan() {
     if ! busy=$(busy_items); then
       busy='[]' holds=null failure="the work in flight could not be listed"
     elif planner_can_change_plan "$busy" "$free" "$cands"; then
-      holds=$(planner_holds "$cands" "$busy" 2>"$err") || { holds=null failure=$(tail -1 "$err"); }
+      holds=$(planner_holds "$cands" "$busy" 2>"$err") || { holds=null failure=$(tail -1 "$err"); cat "$err" >&2; }
     fi
   fi
   rm -f "$err"
+  failure="${failure:-no reason given}"
   [ "$holds" != null ] || echo "::warning::Planner unavailable: $failure. Only the first candidate may start."
   if ! decisions=$(jq -n --argjson candidates "$cands" --argjson free "$free" --argjson busy "$busy" \
       --argjson holds "$holds" --arg failure "$failure" --argjson dry_run "$DRY_RUN" \
