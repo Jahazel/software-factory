@@ -1,5 +1,6 @@
 # One worker job on a fresh GitHub computer. A project repo calls this file.
-# The project keeps its own setup and proof scripts; this file holds the steps every project shares.
+# The project keeps its own setup, proof, and rules files; this file holds the steps every project shares.
+# With no issue, the job runs the project's proof only. With an issue, Claude works the issue and opens a PR.
 name: Worker
 
 on:
@@ -17,12 +18,23 @@ on:
         description: Folder with the proof files to keep
         type: string
         required: true
+      rules:
+        description: Project rules added to the worker prompt; issue runs need it
+        type: string
+        default: ""
+      issue:
+        description: Issue number to work; 0 runs the proof only
+        type: number
+        default: 0
       node-version:
         type: string
         default: "24"
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
+      # Pushes and PRs made with the built-in GITHUB_TOKEN start no checks, so issue runs need this token.
+      FACTORY_GITHUB_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -34,7 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          persist-credentials: false
+          token: ${{ inputs.issue != 0 && secrets.FACTORY_GITHUB_TOKEN || github.token }}
+          persist-credentials: ${{ inputs.issue != 0 }}
 
       - uses: actions/setup-node@v5
         with:
@@ -70,13 +83,48 @@ jobs:
         run: bash "${{ inputs.setup }}"
 
       - name: Project proof
+        if: inputs.issue == 0
         run: bash "${{ inputs.proof }}"
+
+      - name: Prepare the issue
+        id: prepare
+        if: inputs.issue != 0
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN" || { echo "Issue runs need the FACTORY_GITHUB_TOKEN secret."; exit 1; }
+          test -f "${{ inputs.rules }}" || { echo "Issue runs need the project rules file (the rules input)."; exit 1; }
+          git config user.name "software-factory worker"
+          git config user.email "72827154+Jahazel@users.noreply.github.com"
+          mkdir -p "$RUNNER_TEMP/worker"
+          branch=$(bash "$RUNNER_TEMP/factory/scripts/prepare-issue.sh" "${{ inputs.issue }}" "$RUNNER_TEMP/worker/issue.md")
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Work the issue
+        if: inputs.issue != 0
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          ISSUE: ${{ inputs.issue }}
+          BRANCH: ${{ steps.prepare.outputs.branch }}
+        run: |
+          dir="$RUNNER_TEMP/worker"
+          sed -e "s|{{ISSUE}}|$ISSUE|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
+              -e "s|{{BRANCH}}|$BRANCH|g" -e "s|{{ISSUE_FILE}}|$dir/issue.md|g" \
+              "$RUNNER_TEMP/factory/prompts/worker.md" > "$dir/prompt.md"
+          { echo; echo "## Project rules"; echo; cat "${{ inputs.rules }}"; } >> "$dir/prompt.md"
+          claude -p --model claude-opus-5-5 --effort medium --dangerously-skip-permissions \
+            --output-format stream-json --verbose < "$dir/prompt.md" \
+            | tee "$dir/transcript.jsonl" \
+            | jq -r --unbuffered 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text'
 
       - name: Keep proof files
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: proof-${{ github.run_id }}
-          path: ${{ inputs.proof-path }}
+          path: |
+            ${{ inputs.proof-path }}
+            ${{ runner.temp }}/worker/
           retention-days: 7
           if-no-files-found: warn
