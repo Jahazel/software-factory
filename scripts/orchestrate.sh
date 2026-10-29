@@ -33,6 +33,9 @@ for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json n
   # Who added the trigger label last. Only the owner's label counts.
   labeler=$(gh api --paginate "repos/$repo/issues/$n/events" \
     --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$trigger\")] | last | .actor.login // \"\"" | tail -1)
+  # Open issues that GitHub lists under "Blocked by". Work on a blocked issue waits for them.
+  blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
+    --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g')
   open_pr=$(jq -r --argjson n "$n" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | startswith("issue-\($n)-")))] | .[0].number // ""' <<<"$open_prs")
 
   if [ "$(jq -r .author.login <<<"$issue")" != "$owner" ]; then decide "$n" skip "not opened by the owner"
@@ -40,6 +43,7 @@ for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json n
   elif [[ ",$labels," == *",agent:blocked,"* ]]; then decide "$n" skip "has agent:blocked"
   elif [[ ",$labels," == *",agent:in-progress,"* ]]; then decide "$n" skip "a worker already has it"
   elif [ -n "$open_pr" ]; then decide "$n" skip "open PR #$open_pr closes it"
+  elif [ -n "$blockers" ]; then decide "$n" skip "blocked by $blockers"
   elif [ "$free" -le 0 ]; then decide "$n" hold "cap reached; a later run takes it"
   else
     free=$(( free - 1 ))
