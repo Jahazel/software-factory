@@ -60,13 +60,13 @@ conflict_paths() {
   git -C "$dir" merge --abort 2>/dev/null || git -C "$dir" reset --quiet --hard
 }
 
-# Comments on PR $1 with the paths $2, unless a refresh comment is already there, and adds
+# Comments on PR $1 with the paths $2, unless the same comment is already there, and adds
 # agent:blocked to it. Safe to run again after a partial failure.
 block_pr() {
-  local prefix="Factory refresh blocked:" comments
+  local first="Factory refresh blocked: merging main into this branch conflicts in $2." comments
   comments=$(gh api --paginate "repos/$repo/issues/$1/comments" --jq '.[].body') || return 1
-  if ! grep -qF "$prefix" <<<"$comments"; then
-    gh api "repos/$repo/issues/$1/comments" -f body="$prefix merging main into this branch conflicts in $2.
+  if ! grep -qxF "$first" <<<"$comments"; then
+    gh api "repos/$repo/issues/$1/comments" -f body="$first
 
 Merge main by hand, then remove \`agent:blocked\` from this PR." >/dev/null || return 1
   fi

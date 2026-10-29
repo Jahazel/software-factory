@@ -15,7 +15,7 @@ closing_pr() {
 # agent:implement. The label keeps out the owner's own PRs, which use the same branch names.
 factory_prs() {
   local labeled
-  labeled=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label agent:implement --limit 200 --json number --jq '[.[].number]')
+  labeled=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label agent:implement --limit 200 --json number --jq '[.[].number]') || return 1
   gh pr list --repo "$GITHUB_REPOSITORY" --state open --base main --limit 200 \
     --json number,headRefName,isCrossRepository,labels \
     | jq -r --argjson labeled "$labeled" '[.[] | select(.isCrossRepository | not)
