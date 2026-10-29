@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["holds"],
+  "properties": {
+    "holds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue", "overlaps", "files"],
+        "properties": {
+          "issue": { "type": "integer" },
+          "overlaps": { "type": "array", "items": { "type": "string", "pattern": "^(PR )?#[0-9]+$" } },
+          "files": { "type": "array", "maxItems": 5, "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

@@ -3,13 +3,14 @@
 # makes the issue branch or switches to the open PR's branch, and prints the branch name.
 # Usage: prepare-issue.sh <issue> <out-file> [<branch>]   Needs GH_TOKEN and GITHUB_REPOSITORY_OWNER.
 set -euo pipefail
+source "$(dirname "$0")/lib.sh"
 issue="$1"
 out="$2"
 existing="${3:-}"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
 
-json=$(gh issue view "$issue" --repo "$repo" --json number,title,body,labels,author,comments)
+json=$(gh issue view "$issue" --repo "$repo" --json title,author,comments)
 author=$(jq -r .author.login <<<"$json")
 if [ "$author" != "$owner" ]; then
   echo "Issue #$issue was opened by $author, not the owner $owner. The worker takes only the owner's issues."
@@ -17,18 +18,7 @@ if [ "$author" != "$owner" ]; then
 fi
 
 {
-  echo "# Issue #$issue: $(jq -r .title <<<"$json")"
-  echo
-  echo "Labels: $(jq -r '[.labels[].name] | join(", ")' <<<"$json")"
-  echo
-  jq -r .body <<<"$json"
-  parent=$(jq -r .body <<<"$json" | awk '/^## Parent/{f=1;next} f && match($0,/#[0-9]+/){print substr($0,RSTART+1,RLENGTH-1); exit}')
-  if [ -n "$parent" ]; then
-    echo
-    echo "# Parent issue #$parent: $(gh issue view "$parent" --repo "$repo" --json title --jq .title)"
-    echo
-    gh issue view "$parent" --repo "$repo" --json body --jq .body
-  fi
+  issue_brief "$issue"
   echo
   echo "# The owner's comments"
   jq -r --arg owner "$owner" '.comments[] | select(.author.login == $owner) | "\n## \(.createdAt)\n\n\(.body)"' <<<"$json"
