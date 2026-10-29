@@ -10,6 +10,23 @@ closing_pr() {
     | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | startswith("issue-\($n)-")))] | .[0].number // ""'
 }
 
+issue_brief() {
+  local json parent
+  json=$(gh issue view "$1" --repo "$GITHUB_REPOSITORY" --json title,body,labels) || return 1
+  echo "# Issue #$1: $(jq -r .title <<<"$json")"
+  echo
+  echo "Labels: $(jq -r '[.labels[].name] | join(", ")' <<<"$json")"
+  echo
+  jq -r .body <<<"$json"
+  parent=$(jq -r .body <<<"$json" | awk '/^## Parent/{f=1;next} f && match($0,/#[0-9]+/){print substr($0,RSTART+1,RLENGTH-1); exit}')
+  [ -n "$parent" ] || return 0
+  json=$(gh issue view "$parent" --repo "$GITHUB_REPOSITORY" --json title,body) || return 1
+  echo
+  echo "# Parent issue #$parent: $(jq -r .title <<<"$json")"
+  echo
+  jq -r .body <<<"$json"
+}
+
 # Prints one line per factory PR, by PR number: <pr> <issue> <branch> <has agent:blocked: true|false>
 # A factory PR is an open PR into main, from this repo, on branch issue-<n>-*, where open issue n has
 # agent:implement. The label keeps out the owner's own PRs, which use the same branch names.
@@ -39,6 +56,54 @@ classify_conflict() {
     [ "$matched" = true ] || { echo owner; return; }
   done
   if [ "$any" = true ]; then echo agent; else echo owner; fi
+}
+
+valid_holds() {
+  jq -ec 'select(.is_error == false and (.structured_output | type == "object")
+      and (.structured_output.holds | type == "array" and all(.[];
+        type == "object"
+        and (.issue | type == "number" and . == floor)
+        and (.overlaps | type == "array" and all(.[]; type == "string"))
+        and (.files | type == "array" and all(.[]; type == "string")))))
+    | .structured_output.holds' 2>/dev/null
+}
+
+plan_decisions() {
+  jq -c --arg ignore "${AGENT_CONFLICTS:-}" '
+    def dedupe: reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end);
+    . as {candidates: $cands, free: $free, busy: $busy, holds: $holds, failure: $failure, dry_run: $dry}
+    | ($ignore | split(" ") | map(select(. != ""))) as $prefixes
+    | ($busy | map(.pr | select(. != null))) as $prs
+    | ($busy | map(.issue)) as $issues
+    | def open_pr: test("^PR #[0-9]+$") and (.[4:] | tonumber) as $p | $prs | any(. == $p);
+      def busy_issue: test("^#[0-9]+$") and (.[1:] | tonumber) as $m | $issues | any(. == $m);
+      def earlier_candidate($n; $held): test("^#[0-9]+$") and (.[1:] | tonumber) as $m
+        | $m < $n and ($cands | any(. == $m)) and ($held | any(. == $m) | not);
+      def outside_agent_conflicts: . as $f | $prefixes | any(. as $p | $f | startswith($p)) | not;
+    (if $dry then {decision: "would start", reason: "would add agent:in-progress and start a worker"}
+     else {decision: "start", reason: "claims it and starts a worker"} end) as $start
+    | {decision: "hold", reason: "cap reached; a later run takes it"} as $cap
+    | "planner unavailable: \($failure); started the first candidate only" as $unavailable
+    | reduce $cands[] as $n ({free: $free, held: [], out: []};
+        . as $s
+        | ($holds // [] | map(select(.issue == $n))) as $mine
+        | ($mine | map(.overlaps[]) | dedupe
+            | map(select(open_pr or busy_issue or earlier_candidate($n; $s.held)))) as $targets
+        | ($mine | map(.files[]) | dedupe | map(select(outside_agent_conflicts))) as $files
+        | (if $holds == null then
+             if $s.out == [] then (if $s.free > 0 then $start + {reason: $unavailable} else $cap end)
+             else {decision: "hold", reason: $unavailable} end
+           elif $mine == [] then (if $s.free > 0 then $start else $cap end)
+           elif $targets == [] then
+             (if $s.free > 0 then $start + {reason: "planner hold ignored: no overlap with an open PR, a running worker, or an earlier candidate that starts"} else $cap end)
+           elif $files == [] then
+             (if $s.free > 0 then $start + {reason: "planner hold ignored: it names no file\(if $prefixes == [] then "" else " outside \($prefixes | join(", "))" end)"} else $cap end)
+           else {decision: "hold", reason: "overlaps \($targets | join(", ")): \($files[:3] | join(", "))", planned: true} end) as $d
+        | ($d.decision != "hold") as $go
+        | .free -= (if $go then 1 else 0 end)
+        | .held += (if $d.planned then [$n] else [] end)
+        | .out += [{issue: $n, decision: $d.decision, reason: $d.reason, start: $go}])
+    | .out[]'
 }
 
 # Reads file names on stdin. Prints each leading number that two or more names share, such as

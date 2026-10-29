@@ -59,12 +59,13 @@ jobs:
       - name: Get factory files
         run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
 
-      - name: Refresh PRs, decide, and claim
+      - name: Refresh PRs, plan, and claim
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
           # Only the merge of main into a PR uses it, so that push starts the PR's checks.
           FACTORY_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CAP: ${{ inputs.cap }}
           DRY_RUN: ${{ inputs.dry-run }}
           AGENT_CONFLICTS: ${{ inputs.agent-conflicts }}

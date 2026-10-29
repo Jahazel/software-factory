@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# The orchestrator's fixed steps, as plain code. It releases claims that no live run holds, merges
-# main into each open factory PR, reads every open issue with the trigger label, applies the skip
-# rules and the cap, and claims the issues it starts. Each run looks at all PRs and candidates, so a
-# lost or repeated event changes nothing.
-# Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER,
-# GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, CAP, DRY_RUN, AGENT_CONFLICTS (space-separated path prefixes,
-# may be empty). Writes jobs=<JSON array of claimed jobs> to GITHUB_OUTPUT. A job is
-# {"issue":n,"branch":""} for new work, or {"issue":n,"branch":b,"pr":p,"main":sha} for a resolve
-# worker that merges main into the open PR p on branch b.
+# Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
+# GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, CAP, DRY_RUN, AGENT_CONFLICTS
+# (space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
+# GITHUB_OUTPUT. A job is {"issue":n,"branch":""} for new work, or
+# {"issue":n,"branch":b,"pr":p,"main":sha} for a resolve worker that merges main into the open PR p
+# on branch b.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
+prompts="$(dirname "$0")/../prompts"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
 trigger="agent:implement"
@@ -132,10 +130,8 @@ refresh() {
   done <<<"$prs"
 }
 
-# Prints the issues to start, one per line, after the skip rules and the cap. $1 is the number of
-# resolve jobs from refresh; they take their places first.
 pick() {
-  local free=$(( CAP - running - $1 )) n issue labels labeler
+  local n issue labels labeler
 
   for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json number --jq 'sort_by(.number) | .[].number'); do
     issue=$(gh issue view "$n" --repo "$repo" --json author,labels)
@@ -154,18 +150,77 @@ pick() {
     elif [[ ",$labels," == *",agent:in-progress,"* ]]; then decide "#$n" skip "a worker already has it"
     elif [ -n "$open_pr" ]; then decide "#$n" skip "open PR #$open_pr closes it"
     elif [ -n "$blockers" ]; then decide "#$n" skip "blocked by $blockers"
-    elif [ "$free" -le 0 ]; then decide "#$n" hold "cap reached; a later run takes it"
-    else
-      free=$(( free - 1 ))
-      if [ "$DRY_RUN" = true ]; then decide "#$n" "would start" "would add agent:in-progress and start a worker"
-      else decide "#$n" start "claims it and starts a worker"; echo "$n" >&3
-      fi
+    else echo "$n" >&3
     fi
   done 3>&1 >&2
 }
 
-# The task 7 planner goes here. It reads the issues to start and prints the ones that start now.
-plan() { cat; }
+busy_items() {
+  local prs pr issue branch blocked files title items=() pr_issues workers
+  prs=$(factory_prs) || return 1
+  while read -r pr issue branch blocked; do
+    [ -n "$pr" ] || continue
+    files=$(gh api --paginate "repos/$repo/pulls/$pr/files" --jq '.[].filename' | jq -Rsc 'split("\n") | map(select(. != ""))') || return 1
+    title=$(gh api "repos/$repo/pulls/$pr" --jq .title) || return 1
+    items+=("$(jq -cn --argjson issue "$issue" --argjson pr "$pr" --arg title "$title" --argjson files "$files" \
+      '{kind: "pr", issue: $issue, pr: $pr, title: $title, files: $files}')")
+  done <<<"$prs"
+  pr_issues=$(awk '{ print $2 }' <<<"$prs" | jq -Rsc 'split("\n") | map(select(. != "") | tonumber)')
+  workers=$(gh issue list --repo "$repo" --state open --label agent:in-progress --json number,title \
+    | jq -c --argjson skip "$pr_issues" '.[] | select(.number as $n | $skip | index($n) | not)
+        | {kind: "worker", issue: .number, pr: null, title: .title, files: []}') || return 1
+  printf '%s\n' ${items[@]+"${items[@]}"} "$workers" | jq -sc .
+}
+
+planner_holds() {
+  local tree briefs doc out
+  tree=$(gh api "repos/$repo/git/trees/main?recursive=1" \
+    --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("docs/") | not)]') \
+    || { echo "the files on main could not be listed" >&2; return 1; }
+  briefs=$(for n in $(jq '.[]' <<<"$1"); do
+      issue_brief "$n" | jq -Rsc --argjson n "$n" '{issue: $n, brief: .}' || exit 1
+    done | jq -sc .) || { echo "an issue could not be read" >&2; return 1; }
+  doc=$(jq -cn --argjson candidates "$briefs" --argjson busy "$2" --argjson tree "$tree" --arg ignore "${AGENT_CONFLICTS:-}" \
+    '{candidates: $candidates, busy: $busy, tree: $tree, ignore: ($ignore | split(" ") | map(select(. != "")))}')
+  out=$({ cat "$prompts/planner.md"; echo; echo "$doc"; } \
+    | env -u FACTORY_TOKEN -u GH_TOKEN timeout 300 claude -p --model claude-sonnet-5-5 --effort medium \
+        --tools "" --max-turns 3 --no-session-persistence --output-format json \
+        --json-schema "$(cat "$prompts/planner.schema.json")" 2>/dev/null) \
+    || { echo "the Claude call failed or timed out" >&2; return 1; }
+  valid_holds <<<"$out" || { echo "invalid output" >&2; return 1; }
+}
+
+# With nothing busy, the first candidate always starts, so only a second free place lets holds matter.
+planner_can_change_plan() {
+  local busy="$1" free="$2" cands="$3"
+  [ "$busy" != '[]' ] || { [ "$free" -gt 1 ] && [ "$(jq length <<<"$cands")" -gt 1 ]; }
+}
+
+plan() {
+  local cands free busy='[]' holds='[]' failure="" err decisions d
+  cands=$(jq -sc .)
+  [ "$cands" != "[]" ] || return 0
+  free=$(( CAP - running - $1 ))
+  err=$(mktemp)
+  if [ "$free" -gt 0 ]; then
+    if ! busy=$(busy_items); then
+      busy='[]' holds=null failure="the work in flight could not be listed"
+    elif planner_can_change_plan "$busy" "$free" "$cands"; then
+      holds=$(planner_holds "$cands" "$busy" 2>"$err") || { holds=null failure=$(head -1 "$err"); }
+    fi
+  fi
+  [ "$holds" != null ] || echo "::warning::Planner unavailable: $failure. Only the first candidate may start."
+  if ! decisions=$(jq -n --argjson candidates "$cands" --argjson free "$free" --argjson busy "$busy" \
+      --argjson holds "$holds" --arg failure "$failure" --argjson dry_run "$DRY_RUN" \
+      '$ARGS.named' | plan_decisions); then
+    decide "Issues" error "the plan could not be computed; nothing starts; the next run retries"
+    return 0
+  fi
+  while read -r d; do
+    decide "#$(jq .issue <<<"$d")" "$(jq -r .decision <<<"$d")" "$(jq -r .reason <<<"$d")"
+    [ "$(jq .start <<<"$d")" != true ] || jq .issue <<<"$d" >&3
+  done <<<"$decisions"
+}
 
 # Reads job lines. Adds agent:in-progress to each job's issue with github.token, so the label
 # change starts no workflow, and prints the job line. A resolve job claims the issue of its PR.
@@ -182,7 +237,7 @@ sweep
 running=$(gh issue list --repo "$repo" --state open --label agent:in-progress --json number --jq length)
 summary_header
 resolves=$(refresh 3>&1 >&2)
-started=$(pick "$(grep -c . <<<"$resolves" || true)" | plan | jq -c '{issue: ., branch: ""}')
+started=$(pick | plan "$(grep -c . <<<"$resolves" || true)" 3>&1 >&2 | jq -c '{issue: ., branch: ""}')
 # A dry run counts the places resolve jobs would take, but claims and starts nothing.
 if [ "$DRY_RUN" = true ]; then jobs=""; else jobs=$(printf '%s\n%s\n' "$resolves" "$started" | claim); fi
 echo "jobs=$(jq -sc . <<<"$jobs")" >> "${GITHUB_OUTPUT:-/dev/stdout}"
