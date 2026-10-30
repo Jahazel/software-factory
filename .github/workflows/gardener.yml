@@ -1,0 +1,75 @@
+# The weekly gardening pass. A project repo calls this file on a schedule. It opens a report issue,
+# then one worker reads the merged PRs, blocks the worst repeated pattern, and files refactor ideas.
+name: Gardener
+
+on:
+  workflow_call:
+    inputs:
+      time-zone:
+        description: Time zone of the local hour below
+        type: string
+        default: America/Chicago
+      hour:
+        description: Local hour the pass runs; the caller's schedule lists the UTC hours that can match it
+        type: number
+        default: 7
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+      FACTORY_GITHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      issue: ${{ steps.report.outputs.issue }}
+    steps:
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Open the report issue
+        id: report
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          SCHEDULE: ${{ github.event.schedule }}
+          TIME_ZONE: ${{ inputs.time-zone }}
+          HOUR: ${{ inputs.hour }}
+        run: bash "$RUNNER_TEMP/factory/scripts/gardener.sh"
+
+  garden:
+    needs: report
+    if: needs.report.outputs.issue != '0'
+    permissions:
+      contents: read
+    uses: Jahazel/software-factory/.github/workflows/worker.yml@main
+    with:
+      issue: ${{ needs.report.outputs.issue }}
+      prompt: gardener.md
+    secrets: inherit
+
+  # Runs however the pass ended. A pass that ended well closed its report, opened a PR (start label),
+  # or blocked. Anything else crashed, timed out, was cancelled, or stopped early; the label keeps
+  # its window open for the next pass.
+  settle:
+    needs: [report, garden]
+    if: always() && needs.report.outputs.issue != '' && needs.report.outputs.issue != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mark an unfinished report blocked
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          ISSUE: ${{ needs.report.outputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ended=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels \
+            --jq '.state == "CLOSED" or any(.labels[]; .name == "agent:implement" or .name == "agent:blocked")')
+          if [ "$ended" = true ]; then echo "#$ISSUE: the pass ended well or blocked"; exit 0; fi
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label agent:blocked
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Factory gardener failed: the pass ended with no closed report, PR, or blocked comment. Run: $RUN_URL"
+          echo "#$ISSUE: pass did not finish; added agent:blocked"

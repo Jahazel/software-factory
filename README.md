@@ -13,6 +13,9 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `prompts/planner.md`, `prompts/planner.schema.json` | The planner prompt and its answer shape: which candidate issues to hold because they would change the same files as work in flight. |
 | `prompts/merge-main.md` | The "Merge the newest main" steps that both prompts include. |
 | `scripts/prepare-issue.sh` | Writes the issue file and prepares the task's branch and linked worktree before project setup. |
+| `.github/workflows/gardener.yml` | The reusable weekly gardener. A project calls it on a schedule. It opens a `Gardening report <date>` issue, then runs one worker with `prompts/gardener.md` on that issue. |
+| `scripts/gardener.sh` | The gardener's fixed steps: run only on the cron that matches the local hour, find the window, and open the report issue. |
+| `prompts/gardener.md` | The gardener prompt: read the merged PRs and their `Review findings`, block the worst repeated pattern in at most one PR, file up to three refactor ideas, and write the report. |
 | `tests/` | Plain bash tests for the pure rules. Run `for t in tests/*.sh; do bash "$t"; done`. |
 | `claude/` | A copy of pstack, the router hook, the model rules, and the owner's skills, including shared `worktree` setup, laid out like `~/.claude`. |
 | `scripts/sync-claude.sh` | Run on the owner's Mac to refresh `claude/` from `~/.claude`. |
