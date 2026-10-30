@@ -117,14 +117,15 @@ for meta, path in zip(parts[0::2], parts[1::2]):
 }
 
 # Reads text on stdin and prints each issue that a GitHub closing keyword in it names, one per
-# line: the number for an issue in $GITHUB_REPOSITORY, the raw reference for any other repo.
+# line: the number for an issue in $GITHUB_REPOSITORY, the raw reference for any other repo. It
+# reads bytes and lets any spacing or punctuation follow the keyword, so it errs toward a match.
 closing_refs() {
   local ref repo_lc
   repo_lc=$(tr '[:upper:]' '[:lower:]' <<<"$GITHUB_REPOSITORY")
-  { grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +(https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+)\b' || true; } \
-    | sed -E 's/^[^ ]+ +//' | while IFS= read -r ref; do
+  { tr '\n\t\r' '   ' | LC_ALL=C grep -aoiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[^A-Za-z0-9#/]*((https?://)?(www\.)?github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+|gh-[0-9]+)' || true; } \
+    | LC_ALL=C sed -E 's/^[A-Za-z]+[^A-Za-z0-9#/]*//' | while IFS= read -r ref; do
       case "$(tr '[:upper:]' '[:lower:]' <<<"$ref")" in
-        "#"*|"$repo_lc#"*|"https://github.com/$repo_lc/issues/"*) echo "${ref##*[#/]}" ;;
+        "#"*|gh-*|"$repo_lc#"*|*"github.com/$repo_lc/issues/"*) echo "${ref##*[#/-]}" ;;
         *) echo "$ref" ;;
       esac
     done
