@@ -122,7 +122,7 @@ for meta, path in zip(parts[0::2], parts[1::2]):
 closing_refs() {
   local ref repo_lc
   repo_lc=$(tr '[:upper:]' '[:lower:]' <<<"$GITHUB_REPOSITORY")
-  { tr '\n\t\r' '   ' | LC_ALL=C grep -aoiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[^A-Za-z0-9#/]*((https?://)?(www\.)?github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+|gh-[0-9]+)' || true; } \
+  { LC_ALL=C tr '\n\t\r' '   ' | LC_ALL=C grep -aoiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[^A-Za-z0-9#/]*((https?://)?(www\.)?github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+|gh-[0-9]+)' || true; } \
     | LC_ALL=C sed -E 's/^[A-Za-z]+[^A-Za-z0-9#/]*//' | while IFS= read -r ref; do
       case "$(tr '[:upper:]' '[:lower:]' <<<"$ref")" in
         "#"*|gh-*|"$repo_lc#"*|*"github.com/$repo_lc/issues/"*) echo "${ref##*[#/-]}" ;;
