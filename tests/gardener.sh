@@ -28,7 +28,7 @@ GH
 chmod +x "$work/bin/gh"
 export PATH="$work/bin:$PATH" GITHUB_REPOSITORY=o/r
 
-expect "the orchestrator skips the report issue: its open PR closes it" "$(closing_pr 400)" 401
+expect "the gardener PR counts as the open PR that closes the report issue" "$(closing_pr 400)" 401
 expect "the gardener PR closes the lesson it handles" "$(closing_pr 390)" 401
 expect "before the start label, the gardener PR is not a factory PR" "$(factory_prs)" ""
 expect "after the start label, the factory refreshes the gardener PR" "$(LABELED=yes factory_prs)" "401 400 issue-400-gardening-report-2026-11-02 false"

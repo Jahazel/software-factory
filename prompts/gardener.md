@@ -73,7 +73,7 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 
 ## 4. Write the report
 
-Replace the body of issue #{{ISSUE}} with the report, using `gh issue edit {{ISSUE}} --repo {{REPO}} --body-file <file>`. Keep the window line. Use these headings:
+Replace the body of issue #{{ISSUE}} with the report, using `gh issue edit {{ISSUE}} --repo {{REPO}} --body-file <file>`. Keep the window line. Use these `##` headings, in this order. The next pass finds this report by its first heading:
 
 - `What the agents did wrong`: each pattern you found, in plain words, with the PRs it came from. Mark the one you picked.
 - `What the gardener changed`: the pattern the PR blocks and how, or `No PR.` with the reason.
@@ -91,7 +91,7 @@ Then:
 
 1. Follow the Opening a PR playbook. Push `{{BRANCH}}` and open one PR against `main` with the title `refactor(gardening): <the pattern> (<date>)`.
 2. Put `Closes #{{ISSUE}}` in the PR body, and a `Closes #<n>` line for each `gardening:lesson` issue the PR handles. Link the report issue for the reasons.
-3. Run `gh issue edit {{ISSUE}} --repo {{REPO}} --add-label agent:implement`. The label makes the PR a factory PR, so the factory keeps it up to date with main. The factory starts no worker for the issue, because an open PR closes it. Add the label only after the PR exists.
+3. Run `gh issue edit {{ISSUE}} --repo {{REPO}} --add-label agent:implement`. The label makes the PR a factory PR, so the factory keeps it up to date with main. The factory starts no implement worker on a report issue. Add the label only after the PR exists.
 4. Leave the PR open for the owner. Stop.
 
 ## Block when you are stuck
