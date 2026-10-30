@@ -44,4 +44,4 @@ The three directions shown, with one line each, and the one the user picked.
 | Detail page | Opens from a row | Slides in from the right | Overlay duration | Appears without movement |
 ```
 
-Use only the project's motion durations. Every row needs a reduced-motion entry.
+Use only the project's motion durations. Choose each row with `animate`; when a project token breaks its rules, use its value and name the token. Every row needs a reduced-motion entry.
