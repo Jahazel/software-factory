@@ -15,7 +15,7 @@ The issue tracker and triage label vocabulary should have been provided to you. 
 
 Check with the user that these seams match their expectations.
 
-3. Write the spec using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the spec using the template below, then publish it to the project issue tracker. Apply exactly one readiness label, with no further triage: `ready-for-human` when the spec will be split into tickets (the tickets carry the work, so an agent must not build the spec itself), or when it needs a judgment call, external access, or a manual step; `ready-for-agent` when one agent can build the whole spec alone. Ask the user if unsure which applies.
 
 <spec-template>
 
