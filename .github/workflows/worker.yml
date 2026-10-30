@@ -202,7 +202,7 @@ jobs:
   # separate job keeps FACTORY_GITHUB_TOKEN out of the agent's reach.
   publish:
     needs: work
-    if: always() && inputs.issue != '0' && needs.work.outputs.branch != ''
+    if: ${{ !cancelled() && inputs.issue != '0' && needs.work.outputs.branch != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -223,7 +223,7 @@ jobs:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           ISSUE: ${{ inputs.issue }}
           MODE: ${{ inputs.branch == '' && 'new' || 'resolve' }}
-          BRANCH: ${{ needs.work.outputs.branch }}
+          BRANCH: ${{ inputs.branch != '' && inputs.branch || needs.work.outputs.branch }}
           PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.branch == '' && 'worker.md' || 'resolve.md') }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

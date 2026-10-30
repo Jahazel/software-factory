@@ -33,6 +33,23 @@ When the owner closes a factory PR without merging it, the next run adds `agent:
 comment `Factory stopped: PR #<p> was closed without merge.` and starts no worker. To retry any
 blocked issue, the owner removes `agent:blocked`.
 
+## Moving a caller to this version
+
+The caller workflows call this repo `@main`, and `trigger-label` has no default. A caller that does
+not pass it fails from the moment this version merges. Do these steps in order:
+
+1. Wait until the project has no open PR on an `issue-<n>-` factory branch and no issue with
+   `agent:in-progress`. Factory PRs from older versions use that branch name, and this version no
+   longer refreshes or resolves them.
+2. Merge this version, then at once merge the caller change: `trigger-label: agent:implement`, the
+   `unlabeled` event for `agent:blocked`, read-only permissions for the worker and gardener jobs,
+   and `workflow_dispatch` inputs for `dry-run` and `trigger-label`.
+3. Start the caller's orchestrator by hand with `dry-run: true` and `trigger-label: ready-for-agent`.
+   Read the summary: it lists what stage 2 would start.
+4. Make a new `FACTORY_GITHUB_TOKEN`, because older agent jobs could read the old one. Leave out the
+   Workflows permission if the token still does its work without it.
+5. To start stage 2, change the caller's `trigger-label` to `ready-for-agent`.
+
 ## Factory reviews
 
 The installer overlays `factory/skills/code-review` after the personal skills.

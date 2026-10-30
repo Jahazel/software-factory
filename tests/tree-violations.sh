@@ -24,4 +24,9 @@ echo evil > "$work/.github/workflows/leak.yml"; commit; check "a new workflow is
 git -C "$work" mv .github/workflows/ci.yml src/ci.yml; commit; check "a move out of .github/ is refused" ".github/workflows/ci.yml: under .github/"
 ln -s /etc/passwd "$work/src/link"; commit; check "a symbolic link is refused" "src/link: symbolic link"
 echo '[submodule "x"]' > "$work/.gitmodules"; commit; check "a submodule file is refused" ".gitmodules: submodule"
+blob=$(echo x | git -C "$work" hash-object -w --stdin)
+git -C "$work" update-index --add --cacheinfo "100644,$blob,src/bad"$'\xff'".txt"; git -C "$work" commit --quiet -m change
+check "a file name that is not UTF-8 is refused" 'src/bad\xff.txt: file name is not UTF-8'
+git -C "$work" switch --quiet --orphan lone; echo evil > "$work/x.yml"; git -C "$work" add x.yml; git -C "$work" commit --quiet -m lone
+if (cd "$work" && tree_violations "" HEAD) >/dev/null 2>&1; then echo "FAIL: an empty base is not an error"; fails=1; else echo "ok: an empty base is an error"; fi
 exit "$fails"

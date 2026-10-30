@@ -15,10 +15,7 @@ prompts="$(dirname "${BASH_SOURCE[0]}")/../prompts"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
 trigger="${TRIGGER_LABEL:?the caller must pass trigger-label}"
-case "$trigger" in
-  agent:in-progress|agent:blocked|ready-for-human|gardening:*)
-    echo "::error::trigger-label $trigger is a label the factory or the owner uses for something else."; exit 1 ;;
-esac
+valid_trigger "$trigger" || { echo "::error::trigger-label $trigger is a label the factory or the owner uses for something else."; exit 1; }
 summary="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 run_url="${GITHUB_SERVER_URL:-https://github.com}/$repo/actions/runs/$GITHUB_RUN_ID"
 

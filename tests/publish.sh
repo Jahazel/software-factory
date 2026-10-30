@@ -13,7 +13,7 @@ case "$*" in
   "issue view 30 "*) echo "${LESSON:-}" ;;
   "pr list "*"--head"*) echo "${OPEN_PR:-}" ;;
   "api --paginate repos/o/r/issues/"*"/comments"*) echo "${COMMENTS:-}" ;;
-  "pr create"*) echo "https://github.com/o/r/pull/50" ;;
+  "pr create"*) sed 's/^/  body: /' "${@: -1}" >> "$GH_LOG"; echo "https://github.com/o/r/pull/50" ;;
 esac
 EOF
 chmod +x "$work/bin/gh"
@@ -44,6 +44,7 @@ check() {
   if eval "$cond"; then echo "ok: $name"; else echo "FAIL: $name"; sed 's/^/  /' "$GH_LOG"; fails=1; fi
 }
 run() { : > "$GH_LOG"; MODE="${MODE:-new}" BRANCH="${BRANCH:-$branch}" PROMPT="${PROMPT:-worker.md}" bash "$root/scripts/publish.sh" "$work/out" >"$work/run.log" 2>&1; }
+fresh() { git -C "$work/origin.git" update-ref -d "refs/heads/$branch" 2>/dev/null || true; outbox "$1"; }
 remote_has() { git -C "$work/origin.git" rev-parse --verify --quiet "refs/heads/$1" >/dev/null; }
 
 outbox 'echo b > app.txt'
@@ -68,6 +69,31 @@ outbox 'echo d > app.txt'
 printf 'feat(x): add x\n\nAdds x. Closes #13\n' > "$work/out/pr.md"
 run
 check "a PR body that closes another issue is refused" 'grep -q "closes #13, which is not issue #12" "$GH_LOG" && ! remote_has "$branch"'
+
+for body in 'Closes Other/repo#12' 'Fixes: https://github.com/other/repo/issues/12' 'resolves o/r#13'; do
+  fresh 'echo d2 > app.txt'
+  printf 'feat(x): add x\n\nAdds x. %s\n' "$body" > "$work/out/pr.md"
+  run
+  check "a PR body with \"$body\" is refused" 'grep -q "Factory publish refused: the PR body closes" "$GH_LOG" && ! remote_has "$branch"'
+done
+
+fresh 'echo d3 > app.txt'
+printf 'feat(x): add x\n\nAdds x.\n\nCloses: o/r#12\n' > "$work/out/pr.md"
+run
+check "a PR body that closes this issue in long form gets no second Closes line" 'grep -q "body: Closes: o/r#12" "$GH_LOG" && ! grep -q "body: Closes #12" "$GH_LOG"'
+
+fresh 'echo d4 > app.txt'
+printf '\nSecond line.\n' > "$work/out/comments/01.md"
+run
+check "a comment with an empty first line is refused" 'grep -q "comments/01.md has an empty first line" "$GH_LOG" && ! remote_has "$branch"'
+
+fresh 'echo d5 > app.txt'
+git -C "$work/agent" switch --quiet --orphan lone
+mkdir -p "$work/agent/.github/workflows"; echo evil > "$work/agent/.github/workflows/leak.yml"
+git -C "$work/agent" add -A; git -C "$work/agent" commit --quiet -m lone; git -C "$work/agent" branch --quiet -f "$branch" lone
+bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$branch" "$(git -C "$work/agent" rev-parse origin/main)" >/dev/null
+run
+check "a branch with no history in common with main is refused" 'grep -q "shares no history with main" "$GH_LOG" && ! remote_has "$branch"'
 
 outbox 'echo e > app.txt'
 run

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rules that the orchestrator, the settle job, and prepare-issue share. Source this file; it runs nothing.
+# Rules that the orchestrator, the settle job, prepare-issue, and publish share. Source this file; it runs nothing.
 # Needs GH_TOKEN and GITHUB_REPOSITORY.
 publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
@@ -10,6 +10,11 @@ closing_pr() {
   gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 \
     --json number,headRefName,body,closingIssuesReferences \
     | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | test("^(factory/)?issue-\($n)-")))] | .[0].number // ""'
+}
+
+# Fails when label $1 is one the factory or the owner uses for something other than starting work.
+valid_trigger() {
+  case "$1" in agent:in-progress|agent:blocked|ready-for-human|gardening:*|"") return 1 ;; esac
 }
 
 # The factory's branch for new work on issue $1 with title $2 in run $3.
@@ -93,16 +98,35 @@ stop_reason() {
 # Prints the paths between commits $1 and $2 (in the current repo) that the factory never pushes for
 # an agent, one "<path>: <why>" line each. A pushed workflow file runs with the repo's secrets.
 tree_violations() {
+  [ -n "$1" ] || { echo "tree_violations: no base commit" >&2; return 1; }
   git diff --raw --no-renames -z "$1" "$2" | python3 -c '
 import sys
 parts = sys.stdin.buffer.read().split(b"\0")
 for meta, path in zip(parts[0::2], parts[1::2]):
     old_mode, new_mode = meta.decode().lstrip(":").split()[:2]
-    path = path.decode()
-    if path.startswith(".github/"): print(f"{path}: under .github/")
-    elif path == ".gitmodules" or "160000" in (old_mode, new_mode): print(f"{path}: submodule")
-    elif "120000" in (old_mode, new_mode): print(f"{path}: symbolic link")
+    try:
+        name = path.decode()
+    except UnicodeDecodeError:
+        print(path.decode(errors="backslashreplace") + ": file name is not UTF-8")
+        continue
+    if name.startswith(".github/"): print(f"{name}: under .github/")
+    elif name == ".gitmodules" or "160000" in (old_mode, new_mode): print(f"{name}: submodule")
+    elif "120000" in (old_mode, new_mode): print(f"{name}: symbolic link")
 '
+}
+
+# Reads text on stdin and prints each issue that a GitHub closing keyword in it names, one per
+# line: the number for an issue in $GITHUB_REPOSITORY, the raw reference for any other repo.
+closing_refs() {
+  local ref repo_lc
+  repo_lc=$(tr '[:upper:]' '[:lower:]' <<<"$GITHUB_REPOSITORY")
+  { grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +(https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+)\b' || true; } \
+    | sed -E 's/^[^ ]+ +//' | while IFS= read -r ref; do
+      case "$(tr '[:upper:]' '[:lower:]' <<<"$ref")" in
+        "#"*|"$repo_lc#"*|"https://github.com/$repo_lc/issues/"*) echo "${ref##*[#/]}" ;;
+        *) echo "$ref" ;;
+      esac
+    done
 }
 
 # Reads conflicting paths on stdin. Prints "agent" when the list is not empty and every path starts

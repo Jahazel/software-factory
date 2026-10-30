@@ -17,16 +17,14 @@ text_refusal() {
     [ -e "$f" ] || continue
     [ -f "$f" ] && [ ! -L "$f" ] || { echo "${f#"$1"/} is not a plain file"; return; }
     [ "$(wc -c <"$f")" -le "$max_bytes" ] || { echo "${f#"$1"/} is larger than $max_bytes bytes"; return; }
+    [ -n "$(head -1 "$f" | tr -d '[:space:]')" ] || { echo "${f#"$1"/} has an empty first line"; return; }
   done
-}
-
-other_closed_issues() {
-  grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+' | grep -oE '[0-9]+$' | grep -vx "$1" | sort -un || true
 }
 
 pr_refusal() {
   local n labels
-  for n in $(other_closed_issues "$ISSUE" <"$1"); do
+  for n in $(closing_refs <"$1" | grep -vx "$ISSUE" | sort -u); do
+    [[ "$n" =~ ^[0-9]+$ ]] || { echo "the PR body closes $n, which is not in this repo"; return; }
     [ "$PROMPT" = gardener.md ] || { echo "the PR body closes #$n, which is not issue #$ISSUE"; return; }
     labels=$(gh issue view "$n" --repo "$repo" --json state,labels --jq 'select(.state == "OPEN") | [.labels[].name] | join(",")') || return 1
     [[ ",$labels," == *",gardening:lesson,"* ]] || { echo "the PR body closes #$n, which is not an open gardening:lesson issue"; return; }
@@ -64,13 +62,14 @@ pgit() {
 }
 
 fetch_and_check_branch() {
-  local bundle="$1" remote_tip violations
+  local bundle="$1" remote_tip base violations
   pgit fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" || return 1
   remote_tip=$(pgit ls-remote origin "refs/heads/$BRANCH" | awk '{ print $1 }') || return 1
   [ -z "$remote_tip" ] || pgit fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" || return 1
   pgit bundle verify --quiet "$bundle" >/dev/null 2>&1 || { echo "the commits could not be read"; return; }
   pgit fetch --quiet "$bundle" "+refs/heads/$BRANCH:refs/factory/head" 2>/dev/null || { echo "the bundle holds no branch $BRANCH"; return; }
-  violations=$(cd "$work" && tree_violations "$(git merge-base refs/remotes/origin/main refs/factory/head)" refs/factory/head)
+  base=$(pgit merge-base refs/remotes/origin/main refs/factory/head) || { echo "the branch shares no history with main"; return; }
+  violations=$(cd "$work" && tree_violations "$base" refs/factory/head) || { echo "the changed files could not be checked"; return; }
   [ -z "$violations" ] || { echo "the change touches files only the owner may change: $(paste -sd, - <<<"$violations" | sed 's/,/, /g')"; return; }
   if [ "$MODE" = resolve ]; then
     pgit merge-base --is-ancestor "refs/remotes/origin/$BRANCH" refs/factory/head || echo "the new head does not build on the PR's head; the factory never force-pushes"
@@ -84,7 +83,7 @@ open_pr() {
   [ -z "$(gh pr list --repo "$repo" --head "$BRANCH" --state open --json number --jq '.[].number')" ] || return 0
   body=$(mktemp)
   tail -n +3 "$pr_file" >"$body"
-  grep -qiE "\b(close[sd]?|fix(e[sd])?|resolve[sd]?) +#$ISSUE\b" "$body" || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
+  closing_refs <"$body" | grep -qx "$ISSUE" || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
   gh pr create --repo "$repo" --base main --head "$BRANCH" --title "$(head -1 "$pr_file" | sed -E 's/^#+ *//')" --body-file "$body"
 }
 
