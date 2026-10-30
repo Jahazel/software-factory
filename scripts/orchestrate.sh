@@ -136,28 +136,24 @@ refresh() {
 
 # Prints the candidate issues, oldest first, one per line: the labeled issues that pass the skip rules.
 pick() {
-  local n issue labels labeler
+  local n issue labeler blockers open_pr reason
 
   for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json number --jq 'sort_by(.number) | .[].number'); do
-    issue=$(gh issue view "$n" --repo "$repo" --json author,labels)
-    labels=$(jq -r '[.labels[].name] | join(",")' <<<"$issue")
-    # Who added the trigger label last. Only the owner's label counts.
-    labeler=$(gh api --paginate "repos/$repo/issues/$n/events" \
-      --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$trigger\")] | last | .actor.login // \"\"" | tail -1)
-    # Open issues that GitHub lists under "Blocked by". Work on a blocked issue waits for them.
-    blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
-      --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g')
-    open_pr=$(closing_pr "$n")
-
-    if [ "$(jq -r .author.login <<<"$issue")" != "$owner" ]; then decide "#$n" skip "not opened by the owner"
-    elif [ "$labeler" != "$owner" ]; then decide "#$n" skip "label not added by the owner"
-    elif [[ ",$labels," == *",gardening:report,"* ]]; then decide "#$n" skip "a gardening report; the gardener's PR is its work"
-    elif [[ ",$labels," == *",agent:blocked,"* ]]; then decide "#$n" skip "has agent:blocked"
-    elif [[ ",$labels," == *",agent:in-progress,"* ]]; then decide "#$n" skip "a worker already has it"
-    elif [ -n "$open_pr" ]; then decide "#$n" skip "open PR #$open_pr closes it"
-    elif [ -n "$blockers" ]; then decide "#$n" skip "blocked by $blockers"
-    else echo "$n" >&3
+    if ! { issue=$(gh api "repos/$repo/issues/$n") &&
+      # Who added the trigger label last. Only the owner's label counts.
+      labeler=$(gh api --paginate "repos/$repo/issues/$n/events" \
+        --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$trigger\")] | last | .actor.login // \"\"" | tail -1) &&
+      # Open issues that GitHub lists under "Blocked by". Work on a blocked issue waits for them.
+      blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
+        --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g') &&
+      open_pr=$(closing_pr "$n"); }; then
+      decide "#$n" error "the issue could not be read; the next run retries"; continue
     fi
+
+    reason=$(jq -c --arg owner "$owner" --arg labeler "$labeler" --arg open_pr "$open_pr" --arg blockers "$blockers" \
+      '{owner: $owner, author: .user.login, labeler: $labeler, labels: [.labels[].name],
+        sub_issues: (.sub_issues_summary.total // 0), open_pr: $open_pr, blockers: $blockers}' <<<"$issue" | skip_reason)
+    if [ -n "$reason" ]; then decide "#$n" skip "$reason"; else echo "$n" >&3; fi
   done 3>&1 >&2
 }
 
