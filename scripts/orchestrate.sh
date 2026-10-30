@@ -4,7 +4,7 @@
 # repeated event changes nothing. Tests source this file; it then sets up the functions and globals
 # but runs no step.
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
-# GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, CAP, DRY_RUN, AGENT_CONFLICTS
+# GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, TRIGGER_LABEL, CAP, DRY_RUN, AGENT_CONFLICTS
 # (space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
 # GITHUB_OUTPUT. A job is {"issue":n,"branch":""} for new work, or
 # {"issue":n,"branch":b,"pr":p,"main":sha} for a resolve worker that merges main into the open PR p
@@ -14,7 +14,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 prompts="$(dirname "${BASH_SOURCE[0]}")/../prompts"
 repo="$GITHUB_REPOSITORY"
 owner="$GITHUB_REPOSITORY_OWNER"
-trigger="agent:implement"
+trigger="${TRIGGER_LABEL:?the caller must pass trigger-label}"
+case "$trigger" in
+  agent:in-progress|agent:blocked|ready-for-human|gardening:*)
+    echo "::error::trigger-label $trigger is a label the factory or the owner uses for something else."; exit 1 ;;
+esac
 summary="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 run_url="${GITHUB_SERVER_URL:-https://github.com}/$repo/actions/runs/$GITHUB_RUN_ID"
 
@@ -136,23 +140,29 @@ refresh() {
 
 # Prints the candidate issues, oldest first, one per line: the labeled issues that pass the skip rules.
 pick() {
-  local n issue labeler blockers open_pr reason
+  local n issue events labeler cleared_at blockers open_pr closed stopped reason
 
   for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json number --jq 'sort_by(.number) | .[].number'); do
     if ! { issue=$(gh api "repos/$repo/issues/$n") &&
-      # Who added the trigger label last. Only the owner's label counts.
-      labeler=$(gh api --paginate "repos/$repo/issues/$n/events" \
-        --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$trigger\")] | last | .actor.login // \"\"" | tail -1) &&
+      events=$(gh api --paginate "repos/$repo/issues/$n/events" \
+        --jq '.[] | select(.event == "labeled" or .event == "unlabeled") | {event, label: .label.name, actor: .actor.login, at: .created_at}' | jq -sc .) &&
       # Open issues that GitHub lists under "Blocked by". Work on a blocked issue waits for them.
       blockers=$(gh api --paginate "repos/$repo/issues/$n/dependencies/blocked_by" \
         --jq '.[] | select(.state == "open") | "#\(.number)"' | paste -sd, - | sed 's/,/, /g') &&
-      open_pr=$(closing_pr "$n"); }; then
+      open_pr=$(closing_pr "$n") &&
+      closed=$(closed_factory_prs "$n"); }; then
       decide "#$n" error "the issue could not be read; the next run retries"; continue
     fi
+    labeler=$(jq -r --arg t "$trigger" '[.[] | select(.event == "labeled" and .label == $t)] | last | .actor // ""' <<<"$events")
+    cleared_at=$(jq -r --arg o "$owner" '[.[] | select(.event == "unlabeled" and .label == "agent:blocked" and .actor == $o)] | last | .at // ""' <<<"$events")
+    stopped=$(jq -n --argjson closed_prs "$closed" --arg cleared_at "$cleared_at" '$ARGS.named' | stop_reason)
 
-    reason=$(jq -c --arg owner "$owner" --arg labeler "$labeler" --arg open_pr "$open_pr" --arg blockers "$blockers" \
+    reason=$(jq -c --arg owner "$owner" --arg labeler "$labeler" --arg open_pr "$open_pr" --arg blockers "$blockers" --arg stopped "$stopped" \
       '{owner: $owner, author: .user.login, labeler: $labeler, labels: [.labels[].name],
-        sub_issues: (.sub_issues_summary.total // 0), open_pr: $open_pr, blockers: $blockers}' <<<"$issue" | skip_reason)
+        sub_issues: (.sub_issues_summary.total // 0), open_pr: $open_pr, blockers: $blockers, stopped: $stopped}' <<<"$issue" | skip_reason)
+    if [[ "$reason" == stopped:* ]] && [ "$DRY_RUN" != true ]; then
+      block_issue "$n" "Factory stopped: $stopped." || { decide "#$n" error "the stop could not be written; the next run retries"; continue; }
+    fi
     if [ -n "$reason" ]; then decide "#$n" skip "$reason"; else echo "$n" >&3; fi
   done 3>&1 >&2
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: prepare-issue.sh <issue> <out-file> <worktree> [<branch>]
-# Run inside the project checkout with GH_TOKEN, GITHUB_REPOSITORY, and GITHUB_REPOSITORY_OWNER.
+# Run inside the project checkout with GH_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER, and
+# GITHUB_RUN_ID.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 issue="$1"
@@ -21,7 +22,8 @@ fi
   issue_brief "$issue"
   echo
   echo "# The owner's comments"
-  jq -r --arg owner "$owner" '.comments[] | select(.author.login == $owner) | "\n## \(.createdAt)\n\n\(.body)"' <<<"$json"
+  jq -r --arg owner "$owner" --arg marker "$publish_marker" '.comments[] | select(.author.login == $owner and (.body | contains($marker) | not))
+    | "\n## \(.createdAt)\n\n\(.body)"' <<<"$json"
 } > "$out"
 
 if [ -n "$existing" ]; then
@@ -30,7 +32,6 @@ if [ -n "$existing" ]; then
   echo "$existing"
   exit 0
 fi
-slug=$(jq -r .title <<<"$json" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40 | sed -E 's/-+$//')
-branch="issue-$issue-$slug"
+branch=$(factory_branch "$issue" "$(jq -r .title <<<"$json")" "$GITHUB_RUN_ID")
 git worktree add --quiet -b "$branch" "$worktree" HEAD
 echo "$branch"
