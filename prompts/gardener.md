@@ -48,7 +48,7 @@ Run the Refactoring playbook of `pstack:poteto-mode` for the change. This prompt
 
 ## 3. Depth lens: up to three issues
 
-Run step 1 (Explore) of `improve-codebase-architecture` only. Use the files changed in the window as the hot spots. Run the exploring helper with model `sonnet` and effort `medium`. Do not write the HTML report and do not start the grilling loop. The issues carry the report's content instead: its before/after diagram, its strength badge, and its top recommendation.
+Run step 1 (Explore) of `improve-codebase-architecture` only. Use the files changed in the window as the hot spots. Do not write the HTML report and do not start the grilling loop. The issues carry the report's content instead: its before/after diagram, its strength badge, and its top recommendation.
 
 Pick the best candidates, at most three, that no open `gardening:refactor-idea` issue already covers. Rank them 1 to 3 in the order you would do them. Rank by recommendation strength first, then by how often the area changed in the window. Rank 1 is the report's top recommendation. File one issue per candidate:
 

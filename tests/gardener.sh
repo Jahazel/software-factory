@@ -13,6 +13,7 @@ expect "summer time: the 13:00 UTC cron is 08:00 in Chicago" "$(cron_local_hour 
 expect "winter time: the 13:00 UTC cron is 07:00 in Chicago" "$(cron_local_hour '0 13 * * 1' -0600)" 7
 expect "winter time: the 12:00 UTC cron is 06:00 in Chicago" "$(cron_local_hour '0 12 * * 1' -0600)" 6
 expect "an offset east of UTC wraps past midnight" "$(cron_local_hour '0 22 * * 1' +0530)" 3
+expect "a half-hour offset west of UTC rounds down" "$(cron_local_hour '0 12 * * 1' -0330)" 8
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

@@ -10,15 +10,18 @@ repo="${GITHUB_REPOSITORY:-}"
 
 # GitHub cron runs in UTC, so a project that wants one local hour all year lists both UTC hours.
 cron_local_hour() {
-  local cron_line="$1" utc_offset="$2" utc_hour sign
-  utc_hour=$(awk '{ print $2 }' <<<"$cron_line")
+  local cron_line="$1" utc_offset="$2" utc_minutes sign
+  utc_minutes=$(( 10#$(awk '{ print $2 }' <<<"$cron_line") * 60 + 10#$(awk '{ print $1 }' <<<"$cron_line") ))
   sign="${utc_offset:0:1}1"
-  echo $(( (10#$utc_hour + sign * 10#${utc_offset:1:2} + 24) % 24 ))
+  echo $(( (utc_minutes + sign * (10#${utc_offset:1:2} * 60 + 10#${utc_offset:3:2}) + 1440) % 1440 / 60 ))
 }
 
+# A pass counts once its report is finished: closed, or labeled with the start label after its PR
+# opened. A pass that failed or blocked leaves its window for the next one.
 window_start() {
-  gh issue list --repo "$repo" --state all --label gardening:report --limit 1 --json createdAt \
-    --jq '.[0].createdAt // (now - 604800 | todate)'
+  gh issue list --repo "$repo" --state all --label gardening:report --limit 50 --json createdAt,state,labels \
+    --jq '[.[] | select(.state == "CLOSED" or any(.labels[]; .name == "agent:implement"))]
+      | .[0].createdAt // (now - 604800 | todate)'
 }
 
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
@@ -40,8 +43,11 @@ if [ "$GITHUB_EVENT_NAME" = schedule ]; then
   fi
 fi
 
-gh label create gardening:report --repo "$repo" --color 0E8A16 \
-  --description "The weekly gardener's report" >/dev/null 2>&1 || true
+for label in "gardening:report|The weekly gardener's report" \
+  "gardening:cleanup|Finishes a gardening PR; start it after that PR merges" \
+  "gardening:refactor-idea|A deeper module the gardener suggests; the owner's choice"; do
+  gh label create "${label%%|*}" --repo "$repo" --color 0E8A16 --description "${label#*|}" >/dev/null 2>&1 || true
+done
 
 since=$(window_start)
 url=$(gh issue create --repo "$repo" --label gardening:report --title "$title" --body "**Type:** Gardening report. The weekly gardener writes its report here.

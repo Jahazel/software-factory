@@ -151,6 +151,7 @@ pick() {
 
     if [ "$(jq -r .author.login <<<"$issue")" != "$owner" ]; then decide "#$n" skip "not opened by the owner"
     elif [ "$labeler" != "$owner" ]; then decide "#$n" skip "label not added by the owner"
+    elif [[ ",$labels," == *",gardening:report,"* ]]; then decide "#$n" skip "a gardening report; the gardener's PR is its work"
     elif [[ ",$labels," == *",agent:blocked,"* ]]; then decide "#$n" skip "has agent:blocked"
     elif [[ ",$labels," == *",agent:in-progress,"* ]]; then decide "#$n" skip "a worker already has it"
     elif [ -n "$open_pr" ]; then decide "#$n" skip "open PR #$open_pr closes it"
