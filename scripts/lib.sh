@@ -5,11 +5,11 @@ publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
-# by a "Closes #n" line, by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
+# by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
 closing_pr() {
   gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 \
-    --json number,headRefName,body,closingIssuesReferences \
-    | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | test("^(factory/)?issue-\($n)-")))] | .[0].number // ""'
+    --json number,headRefName,closingIssuesReferences \
+    | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.headRefName | test("^(factory/)?issue-\($n)-")))] | .[0].number // ""'
 }
 
 # Fails when label $1 is one the factory or the owner uses for something other than starting work.
@@ -99,9 +99,10 @@ stop_reason() {
 # an agent, one "<path>: <why>" line each. A pushed workflow file runs with the repo's secrets.
 tree_violations() {
   [ -n "$1" ] || { echo "tree_violations: no base commit" >&2; return 1; }
-  git diff --raw --no-renames -z "$1" "$2" | python3 -c '
-import sys
-parts = sys.stdin.buffer.read().split(b"\0")
+  python3 -c '
+import subprocess, sys
+parts = subprocess.run(["git", "diff", "--raw", "--no-renames", "-z", sys.argv[1], sys.argv[2]],
+                       check=True, stdout=subprocess.PIPE).stdout.split(b"\0")
 for meta, path in zip(parts[0::2], parts[1::2]):
     old_mode, new_mode = meta.decode().lstrip(":").split()[:2]
     try:
@@ -112,7 +113,7 @@ for meta, path in zip(parts[0::2], parts[1::2]):
     if name.startswith(".github/"): print(f"{name}: under .github/")
     elif name == ".gitmodules" or "160000" in (old_mode, new_mode): print(f"{name}: submodule")
     elif "120000" in (old_mode, new_mode): print(f"{name}: symbolic link")
-'
+' "$1" "$2"
 }
 
 # Reads text on stdin and prints each issue that a GitHub closing keyword in it names, one per

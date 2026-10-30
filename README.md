@@ -46,8 +46,8 @@ not pass it fails from the moment this version merges. Do these steps in order:
    and `workflow_dispatch` inputs for `dry-run` and `trigger-label`.
 3. Start the caller's orchestrator by hand with `dry-run: true` and `trigger-label: ready-for-agent`.
    Read the summary: it lists what stage 2 would start.
-4. Make a new `FACTORY_GITHUB_TOKEN`, because older agent jobs could read the old one. Leave out the
-   Workflows permission if the token still does its work without it.
+4. Make a new `FACTORY_GITHUB_TOKEN`, because older agent jobs could read the old one. Keep its
+   Workflows permission: a refresh pushes main's workflow changes into factory branches.
 5. To start stage 2, change the caller's `trigger-label` to `ready-for-agent`.
 
 ## Factory reviews

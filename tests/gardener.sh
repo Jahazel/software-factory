@@ -42,7 +42,7 @@ mkdir "$work/bin"
 cat > "$work/bin/gh" <<'GH'
 #!/usr/bin/env bash
 case "$*" in
-  "pr list"*) echo "[{\"number\":401,\"headRefName\":\"${HEAD:-factory/issue-400-gardening-report-2026-11-02-9}\",\"body\":\"Closes #400\\nCloses #390\",\"closingIssuesReferences\":[],\"isCrossRepository\":false,\"labels\":[]}]" ;;
+  "pr list"*) echo "[{\"number\":401,\"headRefName\":\"${HEAD:-factory/issue-400-gardening-report-2026-11-02-9}\",\"body\":\"Closes #400\\nCloses #390\",\"closingIssuesReferences\":[{\"number\":400},{\"number\":390}],\"isCrossRepository\":false,\"labels\":[]}]" ;;
 esac
 GH
 chmod +x "$work/bin/gh"

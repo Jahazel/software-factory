@@ -21,20 +21,21 @@ text_refusal() {
   done
 }
 
-pr_refusal() {
+# Reads closing references (from closing_refs) on stdin; $1 names where they came from.
+closing_refusal() {
   local n labels
-  for n in $(closing_refs <"$1" | grep -vx "$ISSUE" | sort -u); do
-    [[ "$n" =~ ^[0-9]+$ ]] || { echo "the PR body closes $n, which is not in this repo"; return; }
-    [ "$PROMPT" = gardener.md ] || { echo "the PR body closes #$n, which is not issue #$ISSUE"; return; }
+  for n in $(grep -vx "$ISSUE" | sort -u); do
+    [[ "$n" =~ ^[0-9]+$ ]] || { echo "$1 closes $n, which is not in this repo"; return; }
+    [ "$PROMPT" = gardener.md ] || { echo "$1 closes #$n, which is not issue #$ISSUE"; return; }
     labels=$(gh issue view "$n" --repo "$repo" --json state,labels --jq 'select(.state == "OPEN") | [.labels[].name] | join(",")') || return 1
-    [[ ",$labels," == *",gardening:lesson,"* ]] || { echo "the PR body closes #$n, which is not an open gardening:lesson issue"; return; }
+    [[ ",$labels," == *",gardening:lesson,"* ]] || { echo "$1 closes #$n, which is not an open gardening:lesson issue"; return; }
   done
 }
 
 post_once() {
   local first comments
   first=$(head -1 "$2")
-  comments=$(gh api --paginate "repos/$repo/issues/$1/comments" --jq '.[].body') || return 1
+  comments=$(gh api --paginate "repos/$repo/issues/$1/comments" --jq '.[].body | split("\n")[0]') || return 1
   grep -qxF "$first" <<<"$comments" && return 0
   gh api "repos/$repo/issues/$1/comments" -f body="$(cat "$2")
 
@@ -71,6 +72,9 @@ fetch_and_check_branch() {
   base=$(pgit merge-base refs/remotes/origin/main refs/factory/head) || { echo "the branch shares no history with main"; return; }
   violations=$(cd "$work" && tree_violations "$base" refs/factory/head) || { echo "the changed files could not be checked"; return; }
   [ -z "$violations" ] || { echo "the change touches files only the owner may change: $(paste -sd, - <<<"$violations" | sed 's/,/, /g')"; return; }
+  # A push runs the pushed commit's workflows, so a branch from an older main could run removed ones.
+  pgit diff --quiet refs/remotes/origin/main refs/factory/head -- .github .gitmodules || { echo "the branch's .github/ differs from main's"; return; }
+  pgit log --format=%B "$base..refs/factory/head" | closing_refs | closing_refusal "a commit message" || return 1
   if [ "$MODE" = resolve ]; then
     pgit merge-base --is-ancestor "refs/remotes/origin/$BRANCH" refs/factory/head || echo "the new head does not build on the PR's head; the factory never force-pushes"
   elif [ -n "$remote_tip" ] && [ "$remote_tip" != "$(pgit rev-parse refs/factory/head)" ]; then
@@ -83,8 +87,16 @@ open_pr() {
   [ -z "$(gh pr list --repo "$repo" --head "$BRANCH" --state open --json number --jq '.[].number')" ] || return 0
   body=$(mktemp)
   tail -n +3 "$pr_file" >"$body"
-  closing_refs <"$body" | grep -qx "$ISSUE" || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
+  closing_refs <"$body" | grep -x "$ISSUE" >/dev/null || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
   gh pr create --repo "$repo" --base main --head "$BRANCH" --title "$(head -1 "$pr_file" | sed -E 's/^#+ *//')" --body-file "$body"
+}
+
+# Prints GitHub's own list of the issues the open PR on BRANCH closes, in closing_refs form.
+linked_issues() {
+  gh pr view "$BRANCH" --repo "$repo" --json closingIssuesReferences \
+    | jq -r --arg repo "$repo" '.closingIssuesReferences[]
+      | if ("\(.repository.owner.login)/\(.repository.name)" | ascii_downcase) == ($repo | ascii_downcase)
+        then .number else "\(.repository.owner.login)/\(.repository.name)#\(.number)" end'
 }
 
 create_issue() {
@@ -126,7 +138,7 @@ reason=$(text_refusal "$outbox")
 if [ -f "$outbox/pr.md" ]; then
   [ "$MODE" = new ] || refuse_and_exit "$target" "a resolve job opens no PR"
   [ -f "$outbox/head.bundle" ] || refuse_and_exit "$target" "the PR has no commits"
-  reason=$(pr_refusal "$outbox/pr.md") || exit 1
+  reason=$(closing_refs <"$outbox/pr.md" | closing_refusal "the PR body") || exit 1
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi
 if [ -f "$outbox/head.bundle" ]; then
@@ -140,7 +152,14 @@ if [ -f "$outbox/head.bundle" ]; then
   pgit push --quiet origin "refs/factory/head:refs/heads/$BRANCH"
   echo "Pushed $BRANCH."
 fi
-[ ! -f "$outbox/pr.md" ] || open_pr "$outbox/pr.md"
+if [ -f "$outbox/pr.md" ]; then
+  open_pr "$outbox/pr.md"
+  reason=$(linked_issues | closing_refusal "GitHub says the PR") || exit 1
+  if [ -n "$reason" ]; then
+    gh pr close "$BRANCH" --repo "$repo" >/dev/null
+    refuse_and_exit "$target" "$reason; the PR is closed"
+  fi
+fi
 if [ "$PROMPT" = gardener.md ]; then
   for f in "$outbox"/issues/*.md; do [ ! -f "$f" ] || create_issue "$f"; done
   [ ! -f "$outbox/report.md" ] || gh issue edit "$ISSUE" --repo "$repo" --body-file "$outbox/report.md" >/dev/null

@@ -12,7 +12,9 @@ case "$*" in
   "issue view 12 "*"--json labels"*) echo "${REPORT:-false}" ;;
   "issue view 30 "*) echo "${LESSON:-}" ;;
   "pr list "*"--head"*) echo "${OPEN_PR:-}" ;;
-  "api --paginate repos/o/r/issues/"*"/comments"*) echo "${COMMENTS:-}" ;;
+  "api --paginate repos/o/r/issues/"*"/comments"*) jq -r "${@: -1}" <<<"${COMMENTS:-[]}" ;;
+  "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
+  "pr close"*) ;;
   "pr create"*) sed 's/^/  body: /' "${@: -1}" >> "$GH_LOG"; echo "https://github.com/o/r/pull/50" ;;
 esac
 EOF
@@ -86,6 +88,27 @@ fresh 'echo d4 > app.txt'
 printf '\nSecond line.\n' > "$work/out/comments/01.md"
 run
 check "a comment with an empty first line is refused" 'grep -q "comments/01.md has an empty first line" "$GH_LOG" && ! remote_has "$branch"'
+
+fresh 'echo d6 > app.txt'
+git -C "$work/agent" commit --quiet --allow-empty -m 'Tidy up. Closes #13'
+bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$branch" origin/main >/dev/null
+run
+check "a commit message that closes another issue is refused" 'grep -q "a commit message closes #13, which is not issue #12" "$GH_LOG" && ! remote_has "$branch"'
+
+fresh 'echo d7 > app.txt'
+LINKED='[{"number": 13, "repository": {"name": "r", "owner": {"login": "o"}}}]' run
+check "a PR that GitHub links to another issue is closed and the issue blocked" 'grep -q "gh pr close $branch" "$GH_LOG" && grep -q "GitHub says the PR closes #13" "$GH_LOG" && grep -q "labels\[\]=agent:blocked" "$GH_LOG"'
+
+fresh 'echo d8 > app.txt'
+git -C "$work/seed" rm --quiet .github/workflows/ci.yml; git -C "$work/seed" commit --quiet -m "drop ci"; git -C "$work/seed" push --quiet origin main
+run
+check "a branch whose .github/ differs from main's is refused" 'grep -q "differs from main" "$GH_LOG" && ! remote_has "$branch"'
+git -C "$work/seed" revert --quiet --no-edit HEAD; git -C "$work/seed" push --quiet origin main
+
+fresh 'echo d9 > app.txt'
+printf '## Summary\nAll good.\n' > "$work/out/comments/01.md"
+COMMENTS='[{"body": "Earlier note.\n## Summary\nOld."}]' run
+check "a comment is posted when only a later line of an older comment matches its first line" 'grep -q "comments -f body=## Summary" "$GH_LOG"'
 
 fresh 'echo d5 > app.txt'
 git -C "$work/agent" switch --quiet --orphan lone
