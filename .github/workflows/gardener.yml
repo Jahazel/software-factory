@@ -46,15 +46,15 @@ jobs:
     if: needs.report.outputs.issue != '0'
     permissions:
       contents: read
+      issues: read
+      pull-requests: read
+      actions: read
     uses: Jahazel/software-factory/.github/workflows/worker.yml@main
     with:
       issue: ${{ needs.report.outputs.issue }}
       prompt: gardener.md
     secrets: inherit
 
-  # Runs however the pass ended. A pass that ended well closed its report, opened a PR (start label),
-  # or blocked. Anything else crashed, timed out, was cancelled, or stopped early; the label keeps
-  # its window open for the next pass.
   settle:
     needs: [report, garden]
     if: always() && needs.report.outputs.issue != '' && needs.report.outputs.issue != '0'
@@ -67,8 +67,8 @@ jobs:
           ISSUE: ${{ needs.report.outputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ended=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels \
-            --jq '.state == "CLOSED" or any(.labels[]; .name == "agent:implement" or .name == "agent:blocked")')
+          ended=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels,closedByPullRequestsReferences \
+            --jq '.state == "CLOSED" or (.closedByPullRequestsReferences | length > 0) or any(.labels[]; .name == "agent:blocked")')
           if [ "$ended" = true ]; then echo "#$ISSUE: the pass ended well or blocked"; exit 0; fi
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label agent:blocked
           gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Factory gardener failed: the pass ended with no closed report, PR, or blocked comment. Run: $RUN_URL"

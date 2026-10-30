@@ -15,19 +15,22 @@ expect "winter time: the 12:00 UTC cron is 06:00 in Chicago" "$(cron_local_hour 
 expect "an offset east of UTC wraps past midnight" "$(cron_local_hour '0 22 * * 1' +0530)" 3
 expect "a half-hour offset west of UTC rounds down" "$(cron_local_hour '0 12 * * 1' -0330)" 8
 
-# Each argument is one report issue, newest first: <createdAt> <state> <label or -> <written|empty>.
+# Each argument is one report issue, newest first: <createdAt> <state> <label, pr, or -> <written|empty>.
+# "pr" means an open PR closes the issue.
 window() {
   local issues=()
   while [ $# -gt 0 ]; do
     issues+=("$(jq -cn --arg c "$1" --arg s "$2" --arg l "$3" --arg b "$4" '{createdAt: $c, state: $s,
-      labels: (if $l == "-" then [] else [{name: $l}] end),
+      labels: (if $l == "-" or $l == "pr" then [] else [{name: $l}] end),
+      closedByPullRequestsReferences: (if $l == "pr" then [{number: 1}] else [] end),
       body: (if $b == "written" then "Window: x\n\n## What the agents did wrong\n- a" else "Window: x" end)}')")
     shift 4
   done
   printf '%s\n' "${issues[@]}" | jq -s . | jq -r "$window_filter"
 }
 expect "the window starts at a clean pass" "$(window A CLOSED - written)" A
-expect "the window starts at a pass whose PR opened" "$(window A OPEN agent:implement written)" A
+expect "the window starts at a pass whose PR opened" "$(window A OPEN pr written)" A
+expect "an open pass with no PR does not start the window" "$(window B OPEN - written A CLOSED - written)" A
 expect "a pass that blocked after its report leaves the window" "$(window B OPEN agent:blocked written A CLOSED - written)" A
 expect "a blocked pass closed by hand leaves the window" "$(window B CLOSED agent:blocked written A CLOSED - written)" A
 expect "a report closed by hand before it was written leaves the window" "$(window B CLOSED - empty A CLOSED - written)" A
@@ -39,8 +42,7 @@ mkdir "$work/bin"
 cat > "$work/bin/gh" <<'GH'
 #!/usr/bin/env bash
 case "$*" in
-  "pr list"*) echo '[{"number":401,"headRefName":"issue-400-gardening-report-2026-11-02","body":"Closes #400\nCloses #390","closingIssuesReferences":[],"isCrossRepository":false,"labels":[]}]' ;;
-  "issue list"*) [ "${LABELED:-}" = yes ] && echo '[400]' || echo '[]' ;;
+  "pr list"*) echo "[{\"number\":401,\"headRefName\":\"${HEAD:-factory/issue-400-gardening-report-2026-11-02-9}\",\"body\":\"Closes #400\\nCloses #390\",\"closingIssuesReferences\":[{\"number\":400},{\"number\":390}],\"isCrossRepository\":false,\"labels\":[]}]" ;;
 esac
 GH
 chmod +x "$work/bin/gh"
@@ -48,6 +50,6 @@ export PATH="$work/bin:$PATH" GITHUB_REPOSITORY=o/r
 
 expect "the gardener PR counts as the open PR that closes the report issue" "$(closing_pr 400)" 401
 expect "the gardener PR closes the lesson it handles" "$(closing_pr 390)" 401
-expect "before the start label, the gardener PR is not a factory PR" "$(factory_prs)" ""
-expect "after the start label, the factory refreshes the gardener PR" "$(LABELED=yes factory_prs)" "401 400 issue-400-gardening-report-2026-11-02 false"
+expect "the factory refreshes the gardener PR on its factory branch" "$(factory_prs)" "401 400 factory/issue-400-gardening-report-2026-11-02-9 false"
+expect "an owner branch for the same issue is not a factory PR" "$(HEAD=issue-400-by-hand factory_prs)" ""
 exit "$fails"

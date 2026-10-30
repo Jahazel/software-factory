@@ -27,7 +27,7 @@ chmod +x "$work/bin/gh" "$work/bin/claude"
 } > "$work/call.sh"
 fails=0
 run() {
-  PATH="$work/bin:$PATH" STUB_DIR="$work" CLAUDE_STUB="$1" ROOT="$root" GITHUB_REPOSITORY=o/r \
+  PATH="$work/bin:$PATH" STUB_DIR="$work" CLAUDE_STUB="$1" ROOT="$root" GITHUB_REPOSITORY=o/r TRIGGER_LABEL=ready-for-agent \
     GH_TOKEN=gh-secret FACTORY_TOKEN=factory-secret CLAUDE_CODE_OAUTH_TOKEN=claude-secret AGENT_CONFLICTS="migrations/" \
     bash "$work/call.sh" 2>"$work/err"
 }

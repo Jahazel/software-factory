@@ -1,18 +1,38 @@
 #!/usr/bin/env bash
-# Rules that the orchestrator, the settle job, and prepare-issue share. Source this file; it runs nothing.
+# Rules that the orchestrator, the settle job, prepare-issue, and publish share. Source this file; it runs nothing.
 # Needs GH_TOKEN and GITHUB_REPOSITORY.
+publish_marker="<!-- factory-publish -->"
+closed_pr_lookback=200
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
-# by a "Closes #n" line, or by a worker branch issue-<n>-.
+# by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
 closing_pr() {
   gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 \
-    --json number,headRefName,body,closingIssuesReferences \
-    | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.body | test("(?i)\\b(closes|fixes|resolves) #\($n)\\b")) or (.headRefName | startswith("issue-\($n)-")))] | .[0].number // ""'
+    --json number,headRefName,closingIssuesReferences \
+    | jq -r --argjson n "$1" '[.[] | select((.closingIssuesReferences | map(.number) | index($n)) or (.headRefName | test("^(factory/)?issue-\($n)-")))] | .[0].number // ""'
+}
+
+# Fails when label $1 is one the factory or the owner uses for something other than starting work.
+valid_trigger() {
+  case "$1" in agent:in-progress|agent:blocked|ready-for-human|gardening:*|"") return 1 ;; esac
+}
+
+# The factory's branch for new work on issue $1 with title $2 in run $3.
+factory_branch() {
+  local slug
+  slug=$(tr '[:upper:]' '[:lower:]' <<<"$2" | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40 | sed -E 's/-+$//')
+  echo "factory/issue-$1-$slug-$3"
+}
+
+# Succeeds when $1 is a factory branch of issue $2, and of run $3 when $3 is given.
+valid_factory_branch() {
+  [[ "$1" =~ ^factory/issue-$2-[a-z0-9-]*[a-z0-9]$ ]] || return 1
+  [ -z "${3:-}" ] || [[ "$1" == *"-$3" ]]
 }
 
 # Reads one labeled issue's facts as JSON on stdin: owner, author, labeler (who last added the
-# trigger label), labels, sub_issues (count), open_pr, blockers. Prints why the orchestrator skips
-# the issue, or nothing when it is a candidate.
+# trigger label), labels, sub_issues (count), open_pr, blockers, stopped (stop_reason). Prints why
+# the orchestrator skips the issue, or nothing when it is a candidate.
 skip_reason() {
   jq -r 'if .author != .owner then "not opened by the owner"
       elif .labeler != .owner then "label not added by the owner"
@@ -20,6 +40,7 @@ skip_reason() {
       elif .labels | index("ready-for-human") then "has ready-for-human"
       elif .sub_issues > 0 then "has \(.sub_issues) sub-issues"
       elif .labels | index("agent:blocked") then "has agent:blocked"
+      elif .stopped != "" then "stopped: \(.stopped)"
       elif .labels | index("agent:in-progress") then "a worker already has it"
       elif .open_pr != "" then "open PR #\(.open_pr) closes it"
       elif .blockers != "" then "blocked by \(.blockers)"
@@ -46,18 +67,68 @@ issue_brief() {
 }
 
 # Prints one line per factory PR, by PR number: <pr> <issue> <branch> <has agent:blocked: true|false>
-# A factory PR is an open PR into main, from this repo, on branch issue-<n>-*, where open issue n has
-# agent:implement. The label keeps out the owner's own PRs, which use the same branch names.
+# A factory PR is an open PR into main, from this repo, on a factory/issue-<n>- branch.
 factory_prs() {
-  local labeled
-  labeled=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label agent:implement --limit 200 --json number --jq '[.[].number]') || return 1
-  gh pr list --repo "$GITHUB_REPOSITORY" --state open --base main --limit 200 \
-    --json number,headRefName,isCrossRepository,labels \
-    | jq -r --argjson labeled "$labeled" '[.[] | select(.isCrossRepository | not)
-        | (.headRefName | capture("^issue-(?<n>[0-9]+)-").n // empty | tonumber) as $n
-        | select($labeled | index($n)) | . + {issue: $n}]
+  local prs
+  prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --base main --limit 200 \
+    --json number,headRefName,isCrossRepository,labels) || return 1
+  jq -r '[.[] | select(.isCrossRepository | not)
+        | (.headRefName | capture("^factory/issue-(?<n>[0-9]+)-").n // empty | tonumber) as $n
+        | . + {issue: $n}]
       | sort_by(.number) | .[]
-      | "\(.number) \(.issue) \(.headRefName) \([.labels[].name] | index("agent:blocked") != null)"'
+      | "\(.number) \(.issue) \(.headRefName) \([.labels[].name] | index("agent:blocked") != null)"' <<<"$prs"
+}
+
+# Prints issue $1's factory PRs that were closed without merge, as [{pr, closed_at}].
+closed_factory_prs() {
+  gh pr list --repo "$GITHUB_REPOSITORY" --state closed --base main --limit "$closed_pr_lookback" \
+    --json number,headRefName,mergedAt,closedAt,isCrossRepository \
+    | jq -c --argjson n "$1" '[.[] | select((.isCrossRepository | not) and .mergedAt == null
+        and (.headRefName | test("^factory/issue-\($n)-"))) | {pr: .number, closed_at: .closedAt}]'
+}
+
+# Reads {closed_prs: [{pr, closed_at}], cleared_at} on stdin: the closed factory PRs of one issue,
+# and when the owner last removed agent:blocked from it ("" for never). Prints why the factory must
+# not retry the issue, or nothing.
+stop_reason() {
+  jq -r '[.cleared_at as $c | .closed_prs[] | select(.closed_at > $c)] | max_by(.closed_at)
+    | if . == null then "" else "PR #\(.pr) was closed without merge" end'
+}
+
+# Prints the paths between commits $1 and $2 (in the current repo) that the factory never pushes for
+# an agent, one "<path>: <why>" line each. A pushed workflow file runs with the repo's secrets.
+tree_violations() {
+  [ -n "$1" ] || { echo "tree_violations: no base commit" >&2; return 1; }
+  python3 -c '
+import subprocess, sys
+parts = subprocess.run(["git", "diff", "--raw", "--no-renames", "-z", sys.argv[1], sys.argv[2]],
+                       check=True, stdout=subprocess.PIPE).stdout.split(b"\0")
+for meta, path in zip(parts[0::2], parts[1::2]):
+    old_mode, new_mode = meta.decode().lstrip(":").split()[:2]
+    try:
+        name = path.decode()
+    except UnicodeDecodeError:
+        print(path.decode(errors="backslashreplace") + ": file name is not UTF-8")
+        continue
+    if name.startswith(".github/"): print(f"{name}: under .github/")
+    elif name == ".gitmodules" or "160000" in (old_mode, new_mode): print(f"{name}: submodule")
+    elif "120000" in (old_mode, new_mode): print(f"{name}: symbolic link")
+' "$1" "$2"
+}
+
+# Reads text on stdin and prints each issue that a GitHub closing keyword in it names, one per
+# line: the number for an issue in $GITHUB_REPOSITORY, the raw reference for any other repo. It
+# reads bytes and lets any spacing or punctuation follow the keyword, so it errs toward a match.
+closing_refs() {
+  local ref repo_lc
+  repo_lc=$(tr '[:upper:]' '[:lower:]' <<<"$GITHUB_REPOSITORY")
+  { LC_ALL=C tr '\n\t\r' '   ' | LC_ALL=C grep -aoiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[^A-Za-z0-9#/]*((https?://)?(www\.)?github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+|gh-[0-9]+)' || true; } \
+    | LC_ALL=C sed -E 's/^[A-Za-z]+[^A-Za-z0-9#/]*//' | while IFS= read -r ref; do
+      case "$(tr '[:upper:]' '[:lower:]' <<<"$ref")" in
+        "#"*|gh-*|"$repo_lc#"*|*"github.com/$repo_lc/issues/"*) echo "${ref##*[#/-]}" ;;
+        *) echo "$ref" ;;
+      esac
+    done
 }
 
 # Reads conflicting paths on stdin. Prints "agent" when the list is not empty and every path starts
@@ -189,6 +260,19 @@ caller_file() {
   echo "${ref##*/}"
 }
 
+# Comments on issue $1 with the first line $2, unless the same comment is already there, and adds
+# agent:blocked.
+block_issue() {
+  local comments
+  comments=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$1/comments" --jq '.[].body') || return 1
+  if ! grep -qxF "$2" <<<"$comments"; then
+    gh api "repos/$GITHUB_REPOSITORY/issues/$1/comments" -f body="$2
+
+To retry, remove \`agent:blocked\`." >/dev/null || return 1
+  fi
+  gh api "repos/$GITHUB_REPOSITORY/issues/$1/labels" -f 'labels[]=agent:blocked' >/dev/null
+}
+
 # Releases the claim on issue $1. Safe to run twice: the second run finds no claim and stops.
 # Open PR or agent:blocked: remove agent:in-progress.
 # Neither: the worker ended without an answer. Comment once with the run link $2, add
@@ -203,12 +287,7 @@ settle_issue() {
   elif [[ ",$labels," == *",agent:blocked,"* ]]; then
     echo "#$n: worker blocked; claim released"
   else
-    if ! gh issue view "$n" --repo "$GITHUB_REPOSITORY" --json comments --jq '.comments[].body' | grep -qF "$run_url"; then
-      gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "Factory worker failed: the worker ended with no PR and no blocked comment. Run: $run_url
-
-To retry, remove \`agent:blocked\`, then remove and add \`agent:implement\`." >/dev/null
-    fi
-    gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --add-label agent:blocked >/dev/null
+    block_issue "$n" "Factory worker failed: the worker ended with no PR and no blocked comment. Run: $run_url"
     echo "#$n: worker failed; added agent:blocked"
   fi
   gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label agent:in-progress >/dev/null
