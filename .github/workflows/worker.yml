@@ -152,6 +152,8 @@ jobs:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           ISSUE: ${{ inputs.issue }}
           BRANCH: ${{ steps.prepare.outputs.branch }}
+          FACTORY_REVIEW_RUNNER: ${{ runner.temp }}/factory/scripts/review.py
+          FACTORY_REVIEW_DIR: ${{ runner.temp }}/worker/reviews
           PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.branch == '' && 'worker.md' || 'resolve.md') }}
         run: |
           dir="$RUNNER_TEMP/worker"

@@ -20,3 +20,19 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `claude/` | A copy of pstack, the router hook, the model rules, and the owner's skills, including shared `worktree` setup, laid out like `~/.claude`. |
 | `scripts/sync-claude.sh` | Run on the owner's Mac to refresh `claude/` from `~/.claude`. |
 | `scripts/install-claude.sh` | Runs on the job computer. Installs `claude/` into `~/.claude`, adds third-party skills, and turns pstack on. |
+
+## Factory reviews
+
+The installer overlays `factory/skills/code-review` after the personal skills.
+Refreshing `claude/` does not change the factory policy. Reviews focus on the issue
+and defects introduced by its change. Unrelated discoveries stay in Open items.
+
+`scripts/review.py` runs the two review axes together. Each round warns at five
+minutes and stops at ten minutes. A worker gets an initial round and one fix round.
+Timeouts, failed reviewers, and remaining serious findings block the worker.
+The small, low-risk review exemption remains. These are provisional limits based
+on five measured rounds of 46–85 seconds, excluding fixing and verification.
+
+The worker artifact retains `reviews/round-*/` with prompts, report JSON (including
+reviewer token usage), errors, and elapsed time. Implementation and verification
+remain in the worker transcript; the review timer does not limit those stages.

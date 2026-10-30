@@ -34,3 +34,5 @@ if grep -rq "/Users/" "$home_claude/skills" "$home_claude/personal-router-source
 fi
 claude plugin list
 echo "Installed $(ls "$home_claude/skills" | wc -l) skills and pstack."
+
+cp -R "$src/../factory/skills/." "$home_claude/skills/"
