@@ -30,6 +30,7 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 2. Run the `pstack:poteto-mode` router. Use the Bug fix playbook for the label `bug`, the Refactoring playbook for `gardening:cleanup` or `gardening:refactor-idea` (the product's behavior stays the same), and the Feature playbook for every other issue. The issue is the agreed spec. For a bug, reproduce the symptom in the real app before you look for the cause; when you cannot reproduce it, block and say what you tried.
 3. Stay inside issue #{{ISSUE}}. A defect you find outside it goes on a line under `Open items` in the PR body.
 4. Prove the change in the real app with the project's `verify` skill when the change alters what a user sees, what is saved, or who may do it. This computer has no T3 browser; use the skill's Playwright path.
+5. Add no lint or type-check suppression: no `eslint-disable`, `@ts-expect-error`, `@ts-ignore`, or `@ts-nocheck`. Fix the code so the rule passes. When it cannot pass without one, block, and say in plain words why the rule does not fit this code.
 
 ## Merge the newest main
 
@@ -39,7 +40,8 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 
 1. Follow the Opening a PR playbook. Push `{{BRANCH}}` and open one PR against `main`.
 2. Put `Closes #{{ISSUE}}` in the PR body.
-3. Leave the PR open for the owner. Stop.
+3. Add a `Review findings` section to the PR body. Give each finding from `code-review` and the comment rules one line: what was wrong, in plain words, then `fixed` or `not adopted: <reason>`. Write `None.` when the reviews found nothing. The weekly gardener reads this section to find mistakes that repeat across PRs.
+4. Leave the PR open for the owner. Stop.
 
 ## Block when you are stuck
 
