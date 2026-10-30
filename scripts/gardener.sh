@@ -16,10 +16,12 @@ cron_local_hour() {
   echo $(( (utc_minutes + sign * (10#${utc_offset:1:2} * 60 + 10#${utc_offset:3:2}) + 1440) % 1440 / 60 ))
 }
 
-# A pass counts once it ended well: its report is written, and the gardener closed the issue or
-# added the start label after its PR opened. A pass that blocked or crashed leaves its window for
-# the next one, even when the owner closes its issue by hand.
+# A pass counts once it ended well: its report is written, it never blocked, and the gardener
+# closed the issue or added the start label after its PR opened. A crashed pass gets agent:blocked
+# from the workflow, so a blocked or crashed pass leaves its window for the next one, even when
+# the owner closes its issue by hand.
 window_filter='[.[] | select((.body | test("(?m)^## What the agents did wrong"))
+  and (any(.labels[]; .name == "agent:blocked") | not)
   and (.state == "CLOSED" or any(.labels[]; .name == "agent:implement")))]
   | .[0].createdAt // (now - 604800 | todate)'
 

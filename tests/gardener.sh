@@ -29,6 +29,7 @@ window() {
 expect "the window starts at a clean pass" "$(window A CLOSED - written)" A
 expect "the window starts at a pass whose PR opened" "$(window A OPEN agent:implement written)" A
 expect "a pass that blocked after its report leaves the window" "$(window B OPEN agent:blocked written A CLOSED - written)" A
+expect "a blocked pass closed by hand leaves the window" "$(window B CLOSED agent:blocked written A CLOSED - written)" A
 expect "a report closed by hand before it was written leaves the window" "$(window B CLOSED - empty A CLOSED - written)" A
 test "$(window B OPEN - empty)" != B && echo "ok: with no finished pass, the window is the last 7 days" || { echo "FAIL: no finished pass"; fails=1; }
 

@@ -51,3 +51,19 @@ jobs:
       issue: ${{ needs.report.outputs.issue }}
       prompt: gardener.md
     secrets: inherit
+
+  # A crashed worker leaves no blocked comment. The label keeps its window open for the next pass.
+  failed:
+    needs: [report, garden]
+    if: failure() && needs.report.outputs.issue != '' && needs.report.outputs.issue != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mark the report blocked
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          ISSUE: ${{ needs.report.outputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Factory gardener failed: the job ended with no report or PR. Run: $RUN_URL"
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label agent:blocked
