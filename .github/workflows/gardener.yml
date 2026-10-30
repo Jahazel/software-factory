@@ -52,18 +52,24 @@ jobs:
       prompt: gardener.md
     secrets: inherit
 
-  # A crashed worker leaves no blocked comment. The label keeps its window open for the next pass.
-  failed:
+  # Runs however the pass ended. A pass that ended well closed its report, opened a PR (start label),
+  # or blocked. Anything else crashed, timed out, was cancelled, or stopped early; the label keeps
+  # its window open for the next pass.
+  settle:
     needs: [report, garden]
-    if: failure() && needs.report.outputs.issue != '' && needs.report.outputs.issue != '0'
+    if: always() && needs.report.outputs.issue != '' && needs.report.outputs.issue != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Mark the report blocked
+      - name: Mark an unfinished report blocked
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           ISSUE: ${{ needs.report.outputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Factory gardener failed: the job ended with no report or PR. Run: $RUN_URL"
+          ended=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels \
+            --jq '.state == "CLOSED" or any(.labels[]; .name == "agent:implement" or .name == "agent:blocked")')
+          if [ "$ended" = true ]; then echo "#$ISSUE: the pass ended well or blocked"; exit 0; fi
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label agent:blocked
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Factory gardener failed: the pass ended with no closed report, PR, or blocked comment. Run: $RUN_URL"
+          echo "#$ISSUE: pass did not finish; added agent:blocked"

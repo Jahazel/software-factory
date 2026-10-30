@@ -17,8 +17,8 @@ cron_local_hour() {
 }
 
 # A pass counts once it ended well: its report is written, it never blocked, and the gardener
-# closed the issue or added the start label after its PR opened. A crashed pass gets agent:blocked
-# from the workflow, so a blocked or crashed pass leaves its window for the next one, even when
+# closed the issue or added the start label after its PR opened. The workflow's settle job blocks
+# any pass that ended another way, so a failed pass leaves its window for the next one, even when
 # the owner closes its issue by hand.
 window_filter='[.[] | select((.body | test("(?m)^## What the agents did wrong"))
   and (any(.labels[]; .name == "agent:blocked") | not)
