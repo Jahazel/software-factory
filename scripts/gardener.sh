@@ -16,12 +16,16 @@ cron_local_hour() {
   echo $(( (utc_minutes + sign * (10#${utc_offset:1:2} * 60 + 10#${utc_offset:3:2}) + 1440) % 1440 / 60 ))
 }
 
-# A pass counts once the gardener wrote its report. A pass that failed or blocked before that
-# leaves its window for the next one, even when the owner closes its issue.
+# A pass counts once it ended well: its report is written, and the gardener closed the issue or
+# added the start label after its PR opened. A pass that blocked or crashed leaves its window for
+# the next one, even when the owner closes its issue by hand.
+window_filter='[.[] | select((.body | test("(?m)^## What the agents did wrong"))
+  and (.state == "CLOSED" or any(.labels[]; .name == "agent:implement")))]
+  | .[0].createdAt // (now - 604800 | todate)'
+
 window_start() {
-  gh issue list --repo "$repo" --state all --label gardening:report --limit 50 --json createdAt,body \
-    --jq '[.[] | select(.body | test("(?m)^## What the agents did wrong"))]
-      | .[0].createdAt // (now - 604800 | todate)'
+  gh issue list --repo "$repo" --state all --label gardening:report --limit 50 --json createdAt,body,state,labels \
+    --jq "$window_filter"
 }
 
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
