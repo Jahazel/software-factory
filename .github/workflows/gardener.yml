@@ -1,0 +1,53 @@
+# The weekly gardening pass. A project repo calls this file on a schedule. It opens a report issue,
+# then one worker reads the merged PRs, blocks the worst repeated pattern, and files refactor ideas.
+name: Gardener
+
+on:
+  workflow_call:
+    inputs:
+      time-zone:
+        description: Time zone of the local hour below
+        type: string
+        default: America/Chicago
+      hour:
+        description: Local hour the pass runs; the caller's schedule lists the UTC hours that can match it
+        type: number
+        default: 7
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+      FACTORY_GITHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      issue: ${{ steps.report.outputs.issue }}
+    steps:
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Open the report issue
+        id: report
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          SCHEDULE: ${{ github.event.schedule }}
+          TIME_ZONE: ${{ inputs.time-zone }}
+          HOUR: ${{ inputs.hour }}
+        run: bash "$RUNNER_TEMP/factory/scripts/gardener.sh"
+
+  garden:
+    needs: report
+    if: needs.report.outputs.issue != '0'
+    permissions:
+      contents: read
+    uses: Jahazel/software-factory/.github/workflows/worker.yml@main
+    with:
+      issue: ${{ needs.report.outputs.issue }}
+      prompt: gardener.md
+    secrets: inherit

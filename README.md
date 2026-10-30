@@ -6,6 +6,9 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `.github/workflows/worker.yml` | The reusable worker job. It runs the project's `.factory/setup.sh`, `.factory/smoke.sh`, and `.factory/worker-rules.md` unless the caller names other paths. |
 | `.github/workflows/orchestrator.yml` | The reusable orchestrator. A project calls it when the owner adds a label. It merges main into the open factory PRs, claims issues, runs one worker each, and always releases the claims. |
 | `scripts/orchestrate.sh` | The orchestrator's fixed steps: the PR refresh, skip rules, the planner and the cap, one decision per PR or labeled issue, and the claim. |
+| `.github/workflows/gardener.yml` | The reusable weekly gardener. A project calls it on a schedule. It opens a `Gardening report <date>` issue, then runs one worker with `prompts/gardener.md` on that issue. |
+| `scripts/gardener.sh` | The gardener's fixed steps: run only on the cron that matches the local hour, find the window, and open the report issue. |
+| `prompts/gardener.md` | The gardener prompt: read the merged PRs and their `Review findings`, block the worst repeated pattern in at most one PR, file up to three refactor ideas, and write the report. |
 | `scripts/settle.sh` | Checks each resolve job's PR, releases each claim after the workers end, then starts the orchestrator again. |
 | `scripts/lib.sh` | Rules the orchestrator and settle share: issue briefs, factory PRs, open PR check, conflict classes, planner answer checks and plan decisions, repeated migration numbers, PR blocks, resolve checks, and claim release. |
 | `prompts/worker.md` | The worker prompt. The project adds its own rules file. |
