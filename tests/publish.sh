@@ -127,8 +127,8 @@ printf -- '- The upload screen logs the raw error.\n' > "$work/out/follow-ups.md
 run
 check "a draft file opens the PR as a draft" 'grep -q "gh pr create --repo o/r --base main --head $branch --draft" "$GH_LOG"'
 check "follow-ups open one ready-for-human issue named after the PR" 'grep -q "gh issue create --repo o/r --title Follow-ups from PR #50 --label ready-for-human" "$GH_LOG"'
-ISSUES='[{"title": "Follow-ups from PR #50"}]' OPEN_PR=50 run
-check "a second run opens no second follow-ups issue" 'grep -q "gh issue list" "$GH_LOG" && ! grep -q "issue create" "$GH_LOG"'
+rerun=0; ISSUES='[{"title": "Follow-ups from PR #50"}]' OPEN_PR=50 run || rerun=$?
+check "a second run succeeds and opens no second follow-ups issue" '[ "$rerun" = 0 ] && grep -q "gh issue list" "$GH_LOG" && ! grep -q "issue create" "$GH_LOG"'
 
 fresh 'echo i > app.txt'
 printf '\n- x\n' > "$work/out/follow-ups.md"

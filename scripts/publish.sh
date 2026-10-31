@@ -101,7 +101,7 @@ open_pr() {
 
 file_follow_ups() {
   local pr="$1" title="Follow-ups from PR #$1" body found
-  found=$(gh issue list --repo "$repo" --state all --search "\"$title\" in:title" --json title) || return 1
+  found=$(gh issue list --repo "$repo" --state all --label ready-for-human --limit 500 --json title) || return 1
   [ -z "$(jq -r --arg t "$title" '.[] | select(.title == $t) | .title' <<<"$found")" ] || return 0
   gh label create ready-for-human --repo "$repo" --color D93F0B --description "Needs the owner; the factory never starts it" >/dev/null 2>&1 || true
   body=$(mktemp)
