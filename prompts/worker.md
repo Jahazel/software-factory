@@ -51,11 +51,11 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 
 Use this path when the work is done and verified, but the owner must still check something: a review round timed out or failed, serious findings remain after the last fix round, or the PR holds a best guess under `Decisions to confirm`.
 
-1. Open the PR as above, and also create the empty file `{{OUTBOX}}/draft`. The factory opens the PR as a draft, so it cannot merge until the owner marks it ready.
+1. Create the empty file `{{OUTBOX}}/draft` first, then open the PR as above. The factory opens the PR as a draft, so it cannot merge until the owner marks it ready. The heading check allows the draft-only sections only once this file exists.
 2. Start the PR body with the sections that apply:
    - `Decisions to confirm`: each best guess, the options you weighed, why you chose this one, the evidence, and what changes if the owner picks another option.
    - `Review not finished`: why, each remaining finding with its evidence, and every commit no completed review round covered, by its short hash.
-3. Run the heading check from "Open the PR" again, now that the `draft` file exists. Stop.
+3. Run the heading check from "Open the PR" again after you add these sections. Stop.
 
 ## Block when you are stuck
 

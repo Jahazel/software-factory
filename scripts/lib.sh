@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Rules that the orchestrator, the settle job, prepare-issue, and publish share. Source this file; it runs nothing.
-# Needs GH_TOKEN and GITHUB_REPOSITORY.
+# Rules that the orchestrator, the settle job, prepare-issue, publish, and check-pr share. Source this file; it runs nothing.
+# Its GitHub rules need GH_TOKEN and GITHUB_REPOSITORY.
 publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
 
@@ -300,7 +300,10 @@ pr_tail_headings=(Decisions "Test seams" "Review findings" "Open items")
 pr_body_refusal() {
   local allowed=("${pr_lead_headings[@]}" "${pr_required_headings[@]}" "${pr_tail_headings[@]}")
   local found name required i j last=-1 seen=" " hint
-  found=$(tail -n +3 "$1/pr.md" | awk '{ sub(/[ \t\r]+$/, "") } /^ *(```|~~~)/ { fence = !fence; next } !fence && /^## +[^ ]/ { sub(/^## +/, ""); print }')
+  found=$(tail -n +3 "$1/pr.md" | awk '
+    { sub(/[ \t\r]+$/, "") }
+    match($0, /^ ? ? ?(```|~~~)/) { m = substr($0, RLENGTH - 2, 3); if (fence == "") fence = m; else if (m == fence) fence = ""; next }
+    fence == "" && /^ ? ? ?## +[^ ]/ { sub(/^ ? ? ?## +/, ""); sub(/[ \t]+#+$/, ""); print }')
   hint="; found: $(paste -sd, - <<<"$found" | sed 's/,/, /g'); allowed, in this order: $(printf '%s\n' "${allowed[@]}" | paste -sd, - | sed 's/,/, /g')"
   while IFS= read -r name; do
     [ -n "$name" ] || continue
@@ -309,7 +312,7 @@ pr_body_refusal() {
     [ "$i" -ge 0 ] || { echo "the PR body has a \"## $name\" section, which a factory PR may not use$hint"; return; }
     [[ "$seen" != *" $i "* ]] || { echo "the PR body has \"## $name\" twice$hint"; return; }
     [ "$i" -gt "$last" ] || { echo "the PR body has \"## $name\" out of order$hint"; return; }
-    [ "$i" -ge "${#pr_lead_headings[@]}" ] || [ -e "$1/draft" ] || { echo "the PR body has \"## $name\", which belongs only in a draft PR"; return; }
+    [ "$i" -ge "${#pr_lead_headings[@]}" ] || [ -e "$1/draft" ] || { echo "the PR body has \"## $name\", which belongs only in a draft PR$hint"; return; }
     seen+="$i "; last=$i
   done <<<"$found"
   for required in "${pr_required_headings[@]}"; do

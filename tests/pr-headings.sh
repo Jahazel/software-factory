@@ -39,6 +39,14 @@ check_body "a ## line inside a code fence is not a section" "$four"$'\n```text\n
 check_body "### and ##x lines are not sections" "$four"$'\n### Before\n##NoSpace' ""
 check_body "trailing spaces and a carriage return after a heading pass" $'## Problem  \r\nx\n## Summary\t\nx\n## Evidence\nx\n## Merge Danger \r\nx' ""
 check_body "the title line is not part of the body" $'## Summary\nx\n## Evidence\nx\n## Merge Danger\nx' 'no "## Problem" section'
+check_body "a tilde fence line inside a backtick fence does not close it" "$four"$'\n```\n~~~\n## Fake\n```' ""
+check_body "a heading indented up to three spaces is a section" "$four"$'\n   ## Verification' '"## Verification" section, which a factory PR may not use'
+check_body "closing # marks are not part of the heading" $'## Problem ##\nx\n## Summary\nx\n## Evidence #\nx\n## Merge Danger\nx' ""
+DRAFT= check "a draft-only refusal lists the allowed order" 'allowed, in this order: Decisions to confirm' "Review not finished" "Problem" "Summary" "Evidence" "Merge Danger"
+
+rm -rf "$work/out"; mkdir "$work/out"
+out=$(bash "$root/scripts/check-pr.sh" "$work/out" 2>&1) && code=0 || code=$?
+if [ "$code" = 1 ] && [ "$out" = "$work/out/pr.md does not exist" ]; then echo "ok: check-pr.sh names a missing pr.md"; else echo "FAIL: check-pr.sh with no pr.md: exit $code, [$out]"; fails=1; fi
 
 check_body "setup: a body with no Problem" $'## Summary\nx\n## Evidence\nx\n## Merge Danger\nx' 'no "## Problem"'
 out=$(bash "$root/scripts/check-pr.sh" "$work/out") && code=0 || code=$?
@@ -50,4 +58,10 @@ if [ "$code" = 0 ] && [ -z "$out" ]; then echo "ok: check-pr.sh is silent on a g
 template=$(awk '/^```markdown$/ { f = 1; next } f && /^```$/ { exit } f && /^## / { sub(/^## /, ""); print }' "$root/claude/skills/pr/SKILL.md")
 required=$(printf '%s\n' "${pr_required_headings[@]}")
 if [ -n "$template" ] && [ "$template" = "$required" ]; then echo "ok: the required sections match the pr skill's template"; else printf 'FAIL: pr skill template [%s] differs from required [%s]\n' "$template" "$required"; fails=1; fi
+listed() { local s; s=$(printf '`%s`, ' "$@"); s=${s%, }; echo "${s%, *}, and ${s##*, }"; }
+for prompt in worker gardener; do
+  for list in "$(listed "${pr_required_headings[@]}")" "$(listed "${pr_tail_headings[@]}")"; do
+    grep -qF -- "$list" "$root/prompts/$prompt.md" && echo "ok: $prompt.md lists $list" || { echo "FAIL: $prompt.md does not list $list"; fails=1; }
+  done
+done
 exit "$fails"
