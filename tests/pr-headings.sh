@@ -43,6 +43,9 @@ check_body "a tilde fence line inside a backtick fence does not close it" "$four
 check_body "a shorter backtick line inside a longer fence does not close it" "$four"$'\n````markdown\n```\n## Fake\n```\n````' ""
 check_body "a fence line with a language name does not close a fence" "$four"$'\n```md\n```python\n## Fake\n```' ""
 check_body "inline triple backticks do not open a fence" "$four"$'\n```x``` is inline code.\n## Verification' '"## Verification" section, which a factory PR may not use'
+check_body "a shorter tilde line inside a longer tilde fence does not close it" "$four"$'\n~~~~\n~~~\n## Fake\n~~~~' ""
+check_body "a fence line indented four spaces does not close a fence" "$four"$'\n```\n    ```\n## Fake\n```' ""
+check_body "a fence that never closes hides the headings after it" "$four"$'\n```\n## Fake' ""
 check_body "a tab after ## still makes a section" "$four"$'\n##\tVerification' '"## Verification" section, which a factory PR may not use'
 check_body "a heading indented up to three spaces is a section" "$four"$'\n   ## Verification' '"## Verification" section, which a factory PR may not use'
 check_body "closing # marks are not part of the heading" $'## Problem ##\nx\n## Summary\nx\n## Evidence #\nx\n## Merge Danger\nx' ""
