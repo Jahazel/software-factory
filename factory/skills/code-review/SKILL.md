@@ -43,11 +43,11 @@ minutes. It retains prompts, JSON reports (including usage), errors, and elapsed
 time under `$FACTORY_REVIEW_DIR`. Read reports only after the command exits.
 Use actual process handles through this command to wait for completion.
 
-A nonzero exit means incomplete review. Follow the worker's blocked path. Preserve
+A nonzero exit means incomplete review. Follow the worker's draft PR path. Preserve
 available findings. Incomplete review is never a pass and has no automatic retry.
 A zero exit means the reports completed; it does not mean their findings passed.
 
-## Findings and one fix round
+## Findings and two fix rounds
 
 Present Standards and Spec separately. Fix only defects introduced by the change
 or missing issue requirements. A serious finding breaks behavior, loses data,
@@ -55,14 +55,16 @@ affects security/privacy/money/authentication, or misses a spec requirement.
 Keep unrelated discoveries in Open items without fixing them.
 
 When a serious finding needs fixes, make and verify them, commit, then write two
-new prompts containing the previous findings and the diff since the reviewed
-commit. Focus on those fixes and their direct effects. Run:
+new prompts containing the previous findings and the diff since the commit the
+previous round reviewed (`head` in its `status.json`). Focus on those fixes and their direct effects. Run:
 
 ```bash
 python3 "$FACTORY_REVIEW_RUNNER" fix /absolute/standards-fix.md /absolute/spec-fix.md
 ```
 
-This is the second and last round. If it is incomplete or serious findings remain,
-block with the remaining findings and evidence. Changes requiring another review
-also block. Keep cheap local non-serious fixes only when verification proves them.
-These factory bounds replace the router's unlimited fix-round rule.
+Run at most two fix rounds. When the second fix round still reports serious
+findings, run no fourth round. Follow the worker's draft PR path: list the remaining
+findings and evidence, and name every commit no completed round reviewed. A fix
+made after the last round counts as unreviewed; list it with its finding. Keep cheap local non-serious
+fixes only when verification proves them. These factory bounds replace the
+router's unlimited fix-round rule.

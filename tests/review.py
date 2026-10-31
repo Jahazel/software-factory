@@ -66,14 +66,17 @@ class ReviewCLI(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
         self.assertIn("::warning::", first.stdout)
         self.assertEqual(self.status()["status"], "completed")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+        self.assertEqual(self.status()["head"], head.stdout.strip())
         for axis in ("standards", "spec"):
             report = json.loads((self.root / f"reports/round-1/{axis}.json").read_text())
             self.assertEqual(report["usage"]["input_tokens"], 10)
             self.assertEqual(report["result"], self.prompt.read_text())
         self.assertNotEqual(self.run_round().returncode, 0)
         self.assertEqual(self.run_round("fix").returncode, 0)
+        self.assertEqual(self.run_round("fix").returncode, 0)
         self.assertNotEqual(self.run_round("fix").returncode, 0)
-        self.assertEqual(len(list((self.root / "reports").glob("round-*"))), 2)
+        self.assertEqual(len(list((self.root / "reports").glob("round-*"))), 3)
 
     def test_fix_cannot_be_first(self):
         self.assertNotEqual(self.run_round("fix").returncode, 0)

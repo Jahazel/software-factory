@@ -15,6 +15,7 @@ case "$*" in
   "api --paginate repos/o/r/issues/"*"/comments"*) jq -r "${@: -1}" <<<"${COMMENTS:-[]}" ;;
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
+  "issue list "*) echo "${ISSUES:-[]}" ;;
   "pr create"*) sed 's/^/  body: /' "${@: -1}" >> "$GH_LOG"; echo "https://github.com/o/r/pull/50" ;;
 esac
 EOF
@@ -55,6 +56,8 @@ run
 check "a clean outbox pushes the branch" 'remote_has "$branch"'
 check "it opens one PR for the branch" 'grep -q "gh pr create --repo o/r --base main --head $branch --title feat(x): add x" "$GH_LOG"'
 check "it posts the restatement, marked as the factory's" 'grep -q "factory-publish" "$GH_LOG"'
+check "a PR with no draft file opens ready for review" 'grep -q "pr create" "$GH_LOG" && ! grep -q -- "--draft" "$GH_LOG"'
+check "a PR with no follow-ups file opens no follow-up issue" '! grep -q "issue create" "$GH_LOG"'
 
 git -C "$work/origin.git" update-ref -d "refs/heads/$branch"
 outbox 'echo evil > .github/workflows/leak.yml'
@@ -117,6 +120,20 @@ git -C "$work/agent" add -A; git -C "$work/agent" commit --quiet -m lone; git -C
 bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$branch" "$(git -C "$work/agent" rev-parse origin/main)" >/dev/null
 run
 check "a branch with no history in common with main is refused" 'grep -q "shares no history with main" "$GH_LOG" && ! remote_has "$branch"'
+
+fresh 'echo h > app.txt'
+touch "$work/out/draft"
+printf -- '- The upload screen logs the raw error.\n' > "$work/out/follow-ups.md"
+run
+check "a draft file opens the PR as a draft" 'grep -q "gh pr create --repo o/r --base main --head $branch --draft" "$GH_LOG"'
+check "follow-ups open one ready-for-human issue named after the PR" 'grep -q "gh issue create --repo o/r --title Follow-ups from PR #50 --label ready-for-human" "$GH_LOG"'
+rerun=0; ISSUES='[{"title": "Follow-ups from PR #50"}]' OPEN_PR=50 run || rerun=$?
+check "a second run succeeds and opens no second follow-ups issue" '[ "$rerun" = 0 ] && grep -q "gh issue list" "$GH_LOG" && ! grep -q "issue create" "$GH_LOG"'
+
+fresh 'echo i > app.txt'
+printf '\n- x\n' > "$work/out/follow-ups.md"
+run
+check "a follow-ups file with an empty first line is refused" 'grep -q "follow-ups.md has an empty first line" "$GH_LOG" && ! remote_has "$branch"'
 
 outbox 'echo e > app.txt'
 run

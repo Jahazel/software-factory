@@ -11,7 +11,7 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `prompts/worker.md` | The worker prompt. The project adds its own rules file. |
 | `prompts/resolve.md` | The resolve worker prompt: merge main into an open factory PR, and fix a conflict or repeated migration number the project rules allow. |
 | `scripts/pack-outbox.sh` | Runs in the work job after the agent. Adds the branch's new commits to the agent's outbox as a git bundle. |
-| `scripts/publish.sh` | Runs in the publish job. Checks the outbox as untrusted data, then pushes the branch, opens the PR, and posts comments and blocks. It refuses changes under `.github/`, symbolic links, submodules, a PR that closes another issue, and a push that is not this run's branch. |
+| `scripts/publish.sh` | Runs in the publish job. Checks the outbox as untrusted data, then pushes the branch, opens the PR (as a draft when the outbox asks), files the follow-ups issue, and posts comments and blocks. It refuses changes under `.github/`, symbolic links, submodules, a PR that closes another issue, and a push that is not this run's branch. |
 | `prompts/planner.md`, `prompts/planner.schema.json` | The planner prompt and its answer shape: which candidate issues to hold because they would change the same files as work in flight. |
 | `prompts/merge-main.md` | The "Merge the newest main" steps that both prompts include. |
 | `scripts/prepare-issue.sh` | Writes the issue file and prepares the task's branch and linked worktree before project setup. |
@@ -54,11 +54,13 @@ not pass it fails from the moment this version merges. Do these steps in order:
 
 The installer overlays `factory/skills/code-review` after the personal skills.
 Refreshing `claude/` does not change the factory policy. Reviews focus on the issue
-and defects introduced by its change. Unrelated discoveries stay in Open items.
+and defects introduced by its change. Unrelated discoveries stay in Open items, and
+the publish job files them as one `Follow-ups from PR #<n>` issue with `ready-for-human`.
 
 `scripts/review.py` runs the two review axes together. Each round warns at five
-minutes and stops at ten minutes. A worker gets an initial round and one fix round.
-Timeouts, failed reviewers, and remaining serious findings block the worker.
+minutes and stops at ten minutes. A worker gets an initial round and two fix rounds.
+Timeouts, failed reviewers, and serious findings left after the last round open the
+PR as a draft, with a `Review not finished` section; they do not block the worker.
 The small, low-risk review exemption remains. These are provisional limits based
 on five measured rounds of 46–85 seconds, excluding fixing and verification.
 

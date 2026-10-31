@@ -1,6 +1,6 @@
 # Bounded reviews
 
-A worker runs one initial review and one fix review with retained reports.
+A worker runs one initial review and up to two fix reviews with retained reports.
 
 ## Sub-features
 
