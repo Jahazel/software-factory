@@ -292,3 +292,27 @@ settle_issue() {
   fi
   gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label agent:in-progress >/dev/null
 }
+
+pr_lead_headings=("Decisions to confirm" "Review not finished")
+pr_required_headings=(Problem Summary Evidence "Merge Danger")
+pr_tail_headings=(Decisions "Test seams" "Review findings" "Open items")
+
+pr_body_refusal() {
+  local allowed=("${pr_lead_headings[@]}" "${pr_required_headings[@]}" "${pr_tail_headings[@]}")
+  local found name required i j last=-1 seen=" " hint
+  found=$(tail -n +3 "$1/pr.md" | awk '{ sub(/[ \t\r]+$/, "") } /^ *(```|~~~)/ { fence = !fence; next } !fence && /^## +[^ ]/ { sub(/^## +/, ""); print }')
+  hint="; found: $(paste -sd, - <<<"$found" | sed 's/,/, /g'); allowed, in this order: $(printf '%s\n' "${allowed[@]}" | paste -sd, - | sed 's/,/, /g')"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    i=-1
+    for j in "${!allowed[@]}"; do [ "${allowed[$j]}" != "$name" ] || { i=$j; break; }; done
+    [ "$i" -ge 0 ] || { echo "the PR body has a \"## $name\" section, which a factory PR may not use$hint"; return; }
+    [[ "$seen" != *" $i "* ]] || { echo "the PR body has \"## $name\" twice$hint"; return; }
+    [ "$i" -gt "$last" ] || { echo "the PR body has \"## $name\" out of order$hint"; return; }
+    [ "$i" -ge "${#pr_lead_headings[@]}" ] || [ -e "$1/draft" ] || { echo "the PR body has \"## $name\", which belongs only in a draft PR"; return; }
+    seen+="$i "; last=$i
+  done <<<"$found"
+  for required in "${pr_required_headings[@]}"; do
+    grep -qxF -- "$required" <<<"$found" || { echo "the PR body has no \"## $required\" section$hint"; return; }
+  done
+}

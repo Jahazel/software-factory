@@ -31,6 +31,7 @@ mkdir -p "$work/seed/.github/workflows"; echo ci > "$work/seed/.github/workflows
 git -C "$work/seed" add -A; git -C "$work/seed" commit --quiet -m base; git -C "$work/seed" push --quiet origin main
 
 branch=factory/issue-12-add-x-77
+write_pr() { printf 'feat(x): add x\n\n## Problem\n\nx is missing.\n\n## Summary\n\nAdds x.\n\n## Evidence\n\nA test.\n\n## Merge Danger\n\nTwo-way.\n%s' "${1:-}" > "$work/out/pr.md"; }
 outbox() {
   rm -rf "$work/out" "$work/tmp" "$work/agent"; mkdir -p "$work/out/comments" "$work/tmp"
   git clone --quiet "$work/origin.git" "$work/agent"
@@ -39,7 +40,7 @@ outbox() {
   (cd "$work/agent" && eval "$1")
   git -C "$work/agent" add -A; git -C "$work/agent" commit --quiet -m change
   bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$branch" origin/main >/dev/null
-  printf 'feat(x): add x\n\nAdds x.\n' > "$work/out/pr.md"
+  write_pr
 }
 fails=0
 check() {
@@ -71,19 +72,24 @@ BRANCH=factory/issue-12-add-x-78 run
 check "another run's branch is refused" 'grep -q "is not this run" "$GH_LOG" && ! remote_has factory/issue-12-add-x-78'
 
 outbox 'echo d > app.txt'
-printf 'feat(x): add x\n\nAdds x. Closes #13\n' > "$work/out/pr.md"
+write_pr $'Closes #13\n'
 run
 check "a PR body that closes another issue is refused" 'grep -q "closes #13, which is not issue #12" "$GH_LOG" && ! remote_has "$branch"'
 
 for body in 'Closes Other/repo#12' 'Fixes: https://github.com/other/repo/issues/12' 'resolves o/r#13'; do
   fresh 'echo d2 > app.txt'
-  printf 'feat(x): add x\n\nAdds x. %s\n' "$body" > "$work/out/pr.md"
+  write_pr "$body"$'\n'
   run
   check "a PR body with \"$body\" is refused" 'grep -q "Factory publish refused: the PR body closes" "$GH_LOG" && ! remote_has "$branch"'
 done
 
+fresh 'echo d10 > app.txt'
+printf 'feat(x): add x\n\n## Summary\n\nAdds x.\n' > "$work/out/pr.md"
+run
+check "a PR body without the pr skill's sections is refused before the push" 'grep -q "Factory publish refused: the PR body has no \"## Problem\" section" "$GH_LOG" && grep -q "labels\[\]=agent:blocked" "$GH_LOG" && ! remote_has "$branch" && ! grep -q "pr create" "$GH_LOG"'
+
 fresh 'echo d3 > app.txt'
-printf 'feat(x): add x\n\nAdds x.\n\nCloses: o/r#12\n' > "$work/out/pr.md"
+write_pr $'\nCloses: o/r#12\n'
 run
 check "a PR body that closes this issue in long form gets no second Closes line" 'grep -q "body: Closes: o/r#12" "$GH_LOG" && ! grep -q "body: Closes #12" "$GH_LOG"'
 
@@ -123,9 +129,10 @@ check "a branch with no history in common with main is refused" 'grep -q "shares
 
 fresh 'echo h > app.txt'
 touch "$work/out/draft"
+printf 'feat(x): add x\n\n## Decisions to confirm\n\nA guess.\n\n%s\n' "$(tail -n +3 "$work/out/pr.md")" > "$work/out/pr.md"
 printf -- '- The upload screen logs the raw error.\n' > "$work/out/follow-ups.md"
 run
-check "a draft file opens the PR as a draft" 'grep -q "gh pr create --repo o/r --base main --head $branch --draft" "$GH_LOG"'
+check "a draft file opens the PR as a draft, with its lead section" 'grep -q "gh pr create --repo o/r --base main --head $branch --draft" "$GH_LOG"'
 check "follow-ups open one ready-for-human issue named after the PR" 'grep -q "gh issue create --repo o/r --title Follow-ups from PR #50 --label ready-for-human" "$GH_LOG"'
 rerun=0; ISSUES='[{"title": "Follow-ups from PR #50"}]' OPEN_PR=50 run || rerun=$?
 check "a second run succeeds and opens no second follow-ups issue" '[ "$rerun" = 0 ] && grep -q "gh issue list" "$GH_LOG" && ! grep -q "issue create" "$GH_LOG"'

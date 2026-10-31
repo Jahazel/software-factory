@@ -166,6 +166,7 @@ jobs:
           BRANCH: ${{ steps.prepare.outputs.branch }}
           FACTORY_REVIEW_RUNNER: ${{ runner.temp }}/factory/scripts/review.py
           FACTORY_REVIEW_DIR: ${{ runner.temp }}/worker/reviews
+          FACTORY_PR_CHECK: ${{ runner.temp }}/factory/scripts/check-pr.sh
           PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.branch == '' && 'worker.md' || 'resolve.md') }}
         run: |
           dir="$RUNNER_TEMP/worker"
