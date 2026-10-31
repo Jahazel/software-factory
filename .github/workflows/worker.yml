@@ -83,14 +83,21 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: claude -p "Reply with the single word OK." --model haiku --max-turns 1
 
+      # Read the skills from the session's init event. A model asked to recite ~65 names drops some.
+      # The init event leaves out user-invocable: false skills, so those are checked on disk.
       - name: Check Claude sees pstack and skills
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          names=$(claude -p "List the names of every skill available to you, one per line, nothing else." --model haiku --max-turns 1)
+          names=$(claude -p "Reply with the single word OK." --model haiku --max-turns 1 --output-format stream-json --verbose \
+            | jq -r 'select(.type == "system" and .subtype == "init") | .skills[]')
+          [ -n "$names" ] || { echo "Claude reported no skills."; exit 1; }
           echo "$names"
-          for skill in pstack:poteto-mode worktree architect tdd code-review impeccable principle-prove-it-works; do
-            grep -q "$skill" <<<"$names" || { echo "Claude does not see the skill $skill."; exit 1; }
+          for skill in pstack:poteto-mode worktree architect tdd code-review impeccable; do
+            grep -qx "$skill" <<<"$names" || { echo "Claude does not see the skill $skill."; exit 1; }
+          done
+          for skill in principle-prove-it-works; do
+            [ -f "$HOME/.claude/skills/$skill/SKILL.md" ] || { echo "The skill $skill is not installed."; exit 1; }
           done
 
       # Claude Code removes CLAUDE_CODE_OAUTH_TOKEN from the commands it runs, so a claude -p
