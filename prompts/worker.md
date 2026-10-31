@@ -13,7 +13,7 @@ Read the issue from `{{ISSUE_FILE}}`. It holds the issue body, its parent issue 
 
 ## Never ask the owner
 
-Never ask a question and never wait for an answer. When a skill tells you to ask, use the answer below. When no answer below fits and the choice changes what the product does, block. For other choices, pick the smallest option that meets the issue, and record it in the PR body under `Decisions`.
+Never ask a question and never wait for an answer. When a skill tells you to ask, use the answer below. Settle a technical choice yourself: read the code, the docs, the ADRs, and the parent issue, or build the options and measure them. For other choices that do not change what the product does, pick the smallest option that meets the issue, and record it in the PR body under `Decisions`. When a choice changes what the product does and the issue does not settle it, make your best guess and keep going. Pick the option that fits the issue, its parent, and how the product already behaves; between equal options, pick the one that is smaller and easier to undo. Record it under `Decisions to confirm` and open a draft PR (see below).
 
 | A skill asks for | Answer |
 |---|---|
@@ -22,7 +22,7 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 | The review base (`code-review`) | `git merge-base HEAD origin/main`. |
 | The spec (`code-review`) | Issue #{{ISSUE}}, and its parent issue when it has one. |
 | Access or an artifact to reproduce a bug (`diagnosing-bugs`) | None is available. Block. |
-| An owner decision | Block. |
+| An owner decision | Make your best guess, record it under `Decisions to confirm`, and open a draft PR. |
 
 ## Do the work
 
@@ -46,20 +46,22 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 5. When the PR body's `Open items` lists anything, on the PR and draft PR paths only, also write each item to `{{OUTBOX}}/follow-ups.md`, one Markdown list item each, in plain words with file paths. The factory files them as one `ready-for-human` issue titled with the PR number, so the owner can track them after the PR merges.
 6. Stop. The factory pushes `{{BRANCH}}` and opens the PR for the owner.
 
-## Open a draft PR when the review is not finished
+## Open a draft PR when the owner must check something
 
-Use this path when the work is done and verified, but the independent review is not: a review round timed out or failed, or serious findings remain after the last fix round.
+Use this path when the work is done and verified, but the owner must still check something: a review round timed out or failed, serious findings remain after the last fix round, or the PR holds a best guess under `Decisions to confirm`.
 
 1. Open the PR as above, and also create the empty file `{{OUTBOX}}/draft`. The factory opens the PR as a draft, so it cannot merge until the owner marks it ready.
-2. Start the PR body with a `Review not finished` section: why, each remaining finding with its evidence, and every commit no completed review round covered, by its short hash.
+2. Start the PR body with the sections that apply:
+   - `Decisions to confirm`: each best guess, the options you weighed, why you chose this one, the evidence, and what changes if the owner picks another option.
+   - `Review not finished`: why, each remaining finding with its evidence, and every commit no completed review round covered, by its short hash.
 3. Stop.
 
 ## Block when you are stuck
 
-Block when the work itself cannot be finished: a missing owner decision, a bug you cannot reproduce, or a change the factory refuses. An unfinished review is not a reason to block.
+Block only at a real dead end, where no guess can finish the work: a bug you cannot reproduce, access or an artifact you do not have, a rule that cannot pass without a suppression, or a change the factory refuses. An open product question or an unfinished review is not a reason to block; take the draft PR path.
 
 1. Commit useful work on `{{BRANCH}}`; the factory pushes it. Write no `pr.md` for unfinished work.
-2. Write `{{OUTBOX}}/blocked.md`. Start it with `Factory worker blocked:`, then give what you tried, the exact error or open question, and the decision the owner must make. The factory posts it on the issue and adds `agent:blocked`.
+2. Write `{{OUTBOX}}/blocked.md`. Start it with `Factory worker blocked:`, then give what you tried, the exact error, and what the owner must do so a new run can finish. The factory posts it on the issue and adds `agent:blocked`.
 3. Stop.
 
 ## Final reply
