@@ -72,8 +72,9 @@ class ReviewCLI(unittest.TestCase):
             self.assertEqual(report["result"], self.prompt.read_text())
         self.assertNotEqual(self.run_round().returncode, 0)
         self.assertEqual(self.run_round("fix").returncode, 0)
+        self.assertEqual(self.run_round("fix").returncode, 0)
         self.assertNotEqual(self.run_round("fix").returncode, 0)
-        self.assertEqual(len(list((self.root / "reports").glob("round-*"))), 2)
+        self.assertEqual(len(list((self.root / "reports").glob("round-*"))), 3)
 
     def test_fix_cannot_be_first(self):
         self.assertNotEqual(self.run_round("fix").returncode, 0)

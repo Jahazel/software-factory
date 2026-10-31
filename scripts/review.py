@@ -30,8 +30,8 @@ def main():
         except BlockingIOError:
             sys.exit("Review incomplete: another round is running.")
         rounds = sorted(root.glob("round-*"))
-        if len(rounds) >= 2 or (sys.argv[1] == "initial") != (len(rounds) == 0):
-            sys.exit("Review incomplete: initial review plus one fix round only.")
+        if len(rounds) >= 3 or (sys.argv[1] == "initial") != (len(rounds) == 0):
+            sys.exit("Review incomplete: initial review plus two fix rounds only.")
         if rounds:
             previous = json.loads((rounds[-1] / "status.json").read_text())
             if previous["status"] != "completed":

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Usage: publish.sh <outbox>   Needs GH_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER,
 # GITHUB_RUN_ID, ISSUE, MODE (new or resolve), BRANCH, PROMPT, RUN_URL.
-# Outbox files: head.bundle (from pack-outbox.sh), pr.md (title line, blank line, body),
+# Outbox files: head.bundle (from pack-outbox.sh), pr.md (title line, blank line, body), draft
+# (opens the PR as a draft), follow-ups.md (one ready-for-human issue for the PR's Open items),
 # comments/*.md, blocked.md; the gardener also writes issues/*.md ("title: ..." and "labels: ..."
 # lines, a blank line, the body), report.md, and close.
 # Exit 0 after a refusal: it blocks the issue or PR. Exit 1 when GitHub fails: settle then blocks.
@@ -13,7 +14,7 @@ gardener_labels="gardening:refactor-idea gardening:cleanup"
 
 text_refusal() {
   local f
-  for f in "$1"/pr.md "$1"/blocked.md "$1"/report.md "$1"/comments/*.md "$1"/issues/*.md; do
+  for f in "$1"/pr.md "$1"/follow-ups.md "$1"/blocked.md "$1"/report.md "$1"/comments/*.md "$1"/issues/*.md; do
     [ -e "$f" ] || continue
     [ -f "$f" ] && [ ! -L "$f" ] || { echo "${f#"$1"/} is not a plain file"; return; }
     [ "$(wc -c <"$f")" -le "$max_bytes" ] || { echo "${f#"$1"/} is larger than $max_bytes bytes"; return; }
@@ -83,14 +84,27 @@ fetch_and_check_branch() {
   fi
 }
 
+# Prints the number of the open PR on BRANCH, after it opens one when none is open.
 open_pr() {
-  local pr_file="$1" body
-  [ -z "$(gh pr list --repo "$repo" --head "$BRANCH" --state open --json number --jq '.[].number')" ] || return 0
+  local pr_file="$1" draft="$2" body existing url
+  existing=$(gh pr list --repo "$repo" --head "$BRANCH" --state open --json number --jq '.[0].number // ""') || return 1
+  [ -z "$existing" ] || { echo "$existing"; return 0; }
   body=$(mktemp)
   tail -n +3 "$pr_file" >"$body"
   # Not grep -q: its early exit fails the pipe under pipefail and adds a second Closes line.
   closing_refs <"$body" | grep -x "$ISSUE" >/dev/null || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
-  gh pr create --repo "$repo" --base main --head "$BRANCH" --title "$(head -1 "$pr_file" | sed -E 's/^#+ *//')" --body-file "$body"
+  url=$(gh pr create --repo "$repo" --base main --head "$BRANCH" ${draft:+--draft} \
+    --title "$(head -1 "$pr_file" | sed -E 's/^#+ *//')" --body-file "$body") || return 1
+  echo "${url##*/}"
+}
+
+file_follow_ups() {
+  local pr="$1" title="Follow-ups from PR #$1" body
+  [ -z "$(gh issue list --repo "$repo" --state all --search "\"$title\" in:title" --json title | jq -r --arg t "$title" '.[] | select(.title == $t) | .title')" ] || return 0
+  body=$(mktemp)
+  { echo "Found while working #$ISSUE in PR #$pr, outside that issue's scope. The factory never starts this issue; the owner decides what to do with each item."; echo; cat "$2"; } >"$body"
+  gh issue create --repo "$repo" --title "$title" --label ready-for-human --body-file "$body" >/dev/null
+  echo "Filed $title."
 }
 
 # Prints GitHub's own list of the issues the open PR on BRANCH closes, in closing_refs form.
@@ -155,12 +169,14 @@ if [ -f "$outbox/head.bundle" ]; then
   echo "Pushed $BRANCH."
 fi
 if [ -f "$outbox/pr.md" ]; then
-  open_pr "$outbox/pr.md"
+  pr=$(open_pr "$outbox/pr.md" "$([ ! -e "$outbox/draft" ] || echo draft)") || exit 1
+  echo "PR #$pr is open."
   reason=$(linked_issues | closing_refusal "GitHub says the PR") || exit 1
   if [ -n "$reason" ]; then
     gh pr close "$BRANCH" --repo "$repo" >/dev/null
     refuse_and_exit "$target" "$reason; the PR is closed"
   fi
+  [ ! -f "$outbox/follow-ups.md" ] || file_follow_ups "$pr" "$outbox/follow-ups.md"
 fi
 if [ "$PROMPT" = gardener.md ]; then
   for f in "$outbox"/issues/*.md; do [ ! -f "$f" ] || create_issue "$f"; done
