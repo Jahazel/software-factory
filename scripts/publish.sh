@@ -159,6 +159,8 @@ if [ -f "$outbox/pr.md" ]; then
   [ -f "$outbox/head.bundle" ] || refuse_and_exit "$target" "the PR has no commits"
   reason=$(closing_refs <"$outbox/pr.md" | closing_refusal "the PR body") || exit 1
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
+  reason=$(pr_body_refusal "$outbox")
+  [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi
 if [ -f "$outbox/head.bundle" ]; then
   git clone --quiet --filter=blob:none --no-checkout "${PUBLISH_REMOTE:-https://github.com/$repo}" "$work"

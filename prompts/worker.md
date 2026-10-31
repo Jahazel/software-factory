@@ -18,7 +18,7 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 | A skill asks for | Answer |
 |---|---|
 | The ticket (`implement`) | Issue #{{ISSUE}}. |
-| The test seams (`tdd`) | Choose them from the issue's acceptance criteria. List them in the PR body. |
+| The test seams (`tdd`) | Choose them from the issue's acceptance criteria. List them in the PR body under `Test seams`. |
 | The review base (`code-review`) | `git merge-base HEAD origin/main`. |
 | The spec (`code-review`) | Issue #{{ISSUE}}, and its parent issue when it has one. |
 | Access or an artifact to reproduce a bug (`diagnosing-bugs`) | None is available. Block. |
@@ -39,22 +39,23 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 
 ## Open the PR
 
-1. Follow the Opening a PR playbook to write the PR title and body, with one change: do not push, and do not open the PR yourself. Commit all work on `{{BRANCH}}`. Write `{{OUTBOX}}/pr.md`: line 1 is the PR title, line 2 is empty, and the body follows.
+1. Follow the Opening a PR playbook to write the PR title and body, with one change: do not push, and do not open the PR yourself. Commit all work on `{{BRANCH}}`. Write `{{OUTBOX}}/pr.md`: line 1 is the PR title, line 2 is empty, and the body follows. The body uses these `##` headings and no others, in this order: `Decisions to confirm` and `Review not finished` (draft PRs only), then the `pr` skill's `Problem`, `Summary`, `Evidence`, and `Merge Danger` (always), then `Decisions`, `Test seams`, `Review findings`, and `Open items` (when they apply). Put any other section under one of them as a `###` heading.
 2. Put `Closes #{{ISSUE}}` in the PR body. Close no other issue; the factory refuses a PR that does.
 3. Change nothing under `.github/`, and add no symbolic link or submodule. The factory refuses to push such a branch, because a pushed workflow file runs with the repository's secrets. When the issue needs such a change, block and say what the owner must change.
 4. Add a `Review findings` section to the PR body. Give each finding from `code-review` and the comment rules one line: what was wrong, in plain words, then `fixed` or `not adopted: <reason>`. Write `None.` when the reviews found nothing. The weekly gardener reads this section to find mistakes that repeat across PRs.
 5. When the PR body's `Open items` lists anything, on the PR and draft PR paths only, also write each item to `{{OUTBOX}}/follow-ups.md`, one Markdown list item each, in plain words with file paths. The factory files them as one `ready-for-human` issue titled with the PR number, so the owner can track them after the PR merges.
-6. Stop. The factory pushes `{{BRANCH}}` and opens the PR for the owner.
+6. Run `bash "$FACTORY_PR_CHECK" {{OUTBOX}}`. It prints nothing when the PR body's headings follow step 1. When it prints a reason, fix `pr.md` and run it again. The factory runs the same check, and when it fails, it opens no PR and blocks the issue.
+7. Stop. The factory pushes `{{BRANCH}}` and opens the PR for the owner.
 
 ## Open a draft PR when the owner must check something
 
 Use this path when the work is done and verified, but the owner must still check something: a review round timed out or failed, serious findings remain after the last fix round, or the PR holds a best guess under `Decisions to confirm`.
 
-1. Open the PR as above, and also create the empty file `{{OUTBOX}}/draft`. The factory opens the PR as a draft, so it cannot merge until the owner marks it ready.
+1. Create the empty file `{{OUTBOX}}/draft` first, then open the PR as above. The factory opens the PR as a draft, so it cannot merge until the owner marks it ready. The heading check allows the draft-only sections only once this file exists.
 2. Start the PR body with the sections that apply:
    - `Decisions to confirm`: each best guess, the options you weighed, why you chose this one, the evidence, and what changes if the owner picks another option.
    - `Review not finished`: why, each remaining finding with its evidence, and every commit no completed review round covered, by its short hash.
-3. Stop.
+3. Run the heading check from "Open the PR" again after you add these sections. Stop.
 
 ## Block when you are stuck
 

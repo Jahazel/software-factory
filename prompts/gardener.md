@@ -84,9 +84,10 @@ With a change, merge the newest main first:
 
 Then:
 
-1. Follow the Opening a PR playbook to write the PR title and body, with one change: do not push, and do not open the PR yourself. Commit all work on `{{BRANCH}}`. Write `{{OUTBOX}}/pr.md`: line 1 is the title `refactor(gardening): <the pattern> (<date>)`, line 2 is empty, and the body follows. Change nothing under `.github/`; the factory refuses to push it.
+1. Follow the Opening a PR playbook to write the PR title and body, with one change: do not push, and do not open the PR yourself. Commit all work on `{{BRANCH}}`. Write `{{OUTBOX}}/pr.md`: line 1 is the title `refactor(gardening): <the pattern> (<date>)`, line 2 is empty, and the body follows. The body uses these `##` headings and no others, in this order: the `pr` skill's `Problem`, `Summary`, `Evidence`, and `Merge Danger`, then `Decisions`, `Test seams`, `Review findings`, and `Open items` when they apply. Put any other section under one of them as a `###` heading. Change nothing under `.github/`; the factory refuses to push it.
 2. Put `Closes #{{ISSUE}}` in the PR body, and a `Closes #<n>` line for each `gardening:lesson` issue the PR handles. Link the report issue for the reasons.
-3. Stop. The factory pushes `{{BRANCH}}` and opens the PR. Its `factory/` branch makes it a factory PR, so the factory keeps it up to date with main.
+3. Run `bash "$FACTORY_PR_CHECK" {{OUTBOX}}`. It prints nothing when the PR body's headings follow step 1. When it prints a reason, fix `pr.md` and run it again. The factory runs the same check, and when it fails, it opens no PR and blocks the issue.
+4. Stop. The factory pushes `{{BRANCH}}` and opens the PR. Its `factory/` branch makes it a factory PR, so the factory keeps it up to date with main.
 
 ## Block when you are stuck
 
