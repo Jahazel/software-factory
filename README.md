@@ -61,6 +61,9 @@ the publish job files them as one `Follow-ups from PR #<n>` issue with `ready-fo
 minutes and stops at ten minutes. A worker gets an initial round and two fix rounds.
 Timeouts, failed reviewers, and serious findings left after the last round open the
 PR as a draft, with a `Review not finished` section; they do not block the worker.
+Like pstack's unattended runs, a worker never waits on a product question: it makes its
+best guess, lists it under `Decisions to confirm`, and opens a draft PR. It blocks only
+at a real dead end, such as a bug it cannot reproduce.
 The small, low-risk review exemption remains. These are provisional limits based
 on five measured rounds of 46–85 seconds, excluding fixing and verification.
 
