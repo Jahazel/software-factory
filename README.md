@@ -12,7 +12,7 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `prompts/resolve.md` | The resolve worker prompt: merge main into an open factory PR, and fix a conflict or repeated migration number the project rules allow. |
 | `scripts/pack-outbox.sh` | Runs in the work job after the agent. Adds the branch's new commits to the agent's outbox as a git bundle. |
 | `scripts/publish.sh` | Runs in the publish job. Checks the outbox as untrusted data, then pushes the branch, opens the PR (as a draft when the outbox asks), files the follow-ups issue, and posts comments and blocks. It refuses changes under `.github/`, symbolic links, submodules, a PR that closes another issue, a PR body whose `##` headings break the `pr` skill's order, and a push that is not this run's branch. |
-| `scripts/check-pr.sh` | The agent runs it on its outbox before it stops. It runs publish's PR heading check and prints the reason publish would refuse. The worker job passes its path as `FACTORY_PR_CHECK`. |
+| `scripts/check-pr.sh` | The agent runs it on its outbox before it stops. It runs publish's PR heading check and prints the reason publish would refuse, or that `pr.md` is missing. The worker job passes its path as `FACTORY_PR_CHECK`. |
 | `prompts/planner.md`, `prompts/planner.schema.json` | The planner prompt and its answer shape: which candidate issues to hold because they would change the same files as work in flight. |
 | `prompts/merge-main.md` | The "Merge the newest main" steps that both prompts include. |
 | `scripts/prepare-issue.sh` | Writes the issue file and prepares the task's branch and linked worktree before project setup. |

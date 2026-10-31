@@ -301,9 +301,10 @@ pr_body_refusal() {
   local allowed=("${pr_lead_headings[@]}" "${pr_required_headings[@]}" "${pr_tail_headings[@]}")
   local found name required i j last=-1 seen=" " hint
   found=$(tail -n +3 "$1/pr.md" | awk '
-    { sub(/[ \t\r]+$/, "") }
-    match($0, /^ ? ? ?(```|~~~)/) { m = substr($0, RLENGTH - 2, 3); if (fence == "") fence = m; else if (m == fence) fence = ""; next }
-    fence == "" && /^ ? ? ?## +[^ ]/ { sub(/^ ? ? ?## +/, ""); sub(/[ \t]+#+$/, ""); print }')
+    { sub(/[ \t\r]+$/, ""); line = $0; sub(/^ ? ? ?/, "", line) }
+    fence != "" { if (line ~ /^(`+|~+)$/ && substr(line, 1, 1) == substr(fence, 1, 1) && length(line) >= length(fence)) fence = ""; next }
+    match(line, /^(```+|~~~+)/) { m = substr(line, 1, RLENGTH); if (m ~ /^~/ || index(substr(line, RLENGTH + 1), "`") == 0) { fence = m; next } }
+    line ~ /^##[ \t]+[^ \t]/ { sub(/^##[ \t]+/, "", line); sub(/[ \t]+#+$/, "", line); print line }')
   hint="; found: $(paste -sd, - <<<"$found" | sed 's/,/, /g'); allowed, in this order: $(printf '%s\n' "${allowed[@]}" | paste -sd, - | sed 's/,/, /g')"
   while IFS= read -r name; do
     [ -n "$name" ] || continue

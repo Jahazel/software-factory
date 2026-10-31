@@ -40,9 +40,13 @@ check_body "### and ##x lines are not sections" "$four"$'\n### Before\n##NoSpace
 check_body "trailing spaces and a carriage return after a heading pass" $'## Problem  \r\nx\n## Summary\t\nx\n## Evidence\nx\n## Merge Danger \r\nx' ""
 check_body "the title line is not part of the body" $'## Summary\nx\n## Evidence\nx\n## Merge Danger\nx' 'no "## Problem" section'
 check_body "a tilde fence line inside a backtick fence does not close it" "$four"$'\n```\n~~~\n## Fake\n```' ""
+check_body "a shorter backtick line inside a longer fence does not close it" "$four"$'\n````markdown\n```\n## Fake\n```\n````' ""
+check_body "a fence line with a language name does not close a fence" "$four"$'\n```md\n```python\n## Fake\n```' ""
+check_body "inline triple backticks do not open a fence" "$four"$'\n```x``` is inline code.\n## Verification' '"## Verification" section, which a factory PR may not use'
+check_body "a tab after ## still makes a section" "$four"$'\n##\tVerification' '"## Verification" section, which a factory PR may not use'
 check_body "a heading indented up to three spaces is a section" "$four"$'\n   ## Verification' '"## Verification" section, which a factory PR may not use'
 check_body "closing # marks are not part of the heading" $'## Problem ##\nx\n## Summary\nx\n## Evidence #\nx\n## Merge Danger\nx' ""
-DRAFT= check "a draft-only refusal lists the allowed order" 'allowed, in this order: Decisions to confirm' "Review not finished" "Problem" "Summary" "Evidence" "Merge Danger"
+check "a draft-only refusal lists the allowed order" 'allowed, in this order: Decisions to confirm, Review not finished, Problem, Summary, Evidence, Merge Danger, Decisions, Test seams, Review findings, Open items' "Review not finished" "Problem" "Summary" "Evidence" "Merge Danger"
 
 rm -rf "$work/out"; mkdir "$work/out"
 out=$(bash "$root/scripts/check-pr.sh" "$work/out" 2>&1) && code=0 || code=$?
@@ -58,10 +62,11 @@ if [ "$code" = 0 ] && [ -z "$out" ]; then echo "ok: check-pr.sh is silent on a g
 template=$(awk '/^```markdown$/ { f = 1; next } f && /^```$/ { exit } f && /^## / { sub(/^## /, ""); print }' "$root/claude/skills/pr/SKILL.md")
 required=$(printf '%s\n' "${pr_required_headings[@]}")
 if [ -n "$template" ] && [ "$template" = "$required" ]; then echo "ok: the required sections match the pr skill's template"; else printf 'FAIL: pr skill template [%s] differs from required [%s]\n' "$template" "$required"; fails=1; fi
-listed() { local s; s=$(printf '`%s`, ' "$@"); s=${s%, }; echo "${s%, *}, and ${s##*, }"; }
+prose_list() { local s; s=$(printf '`%s`, ' "$@"); s=${s%, }; if [ $# = 2 ]; then echo "${s/, / and }"; else echo "${s%, *}, and ${s##*, }"; fi; }
+check_prompt() { grep -qF -- "$2" "$root/prompts/$1.md" && echo "ok: $1.md lists $2" || { echo "FAIL: $1.md does not list $2"; fails=1; }; }
+check_prompt worker "$(prose_list "${pr_lead_headings[@]}")"
 for prompt in worker gardener; do
-  for list in "$(listed "${pr_required_headings[@]}")" "$(listed "${pr_tail_headings[@]}")"; do
-    grep -qF -- "$list" "$root/prompts/$prompt.md" && echo "ok: $prompt.md lists $list" || { echo "FAIL: $prompt.md does not list $list"; fails=1; }
-  done
+  check_prompt "$prompt" "$(prose_list "${pr_required_headings[@]}")"
+  check_prompt "$prompt" "$(prose_list "${pr_tail_headings[@]}")"
 done
 exit "$fails"
