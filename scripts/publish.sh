@@ -95,15 +95,18 @@ open_pr() {
   closing_refs <"$body" | grep -x "$ISSUE" >/dev/null || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
   url=$(gh pr create --repo "$repo" --base main --head "$BRANCH" ${draft:+--draft} \
     --title "$(head -1 "$pr_file" | sed -E 's/^#+ *//')" --body-file "$body") || return 1
-  echo "${url##*/}"
+  [[ "$url" =~ /pull/([0-9]+)$ ]] || { echo "gh pr create printed no PR URL: $url" >&2; return 1; }
+  echo "${BASH_REMATCH[1]}"
 }
 
 file_follow_ups() {
-  local pr="$1" title="Follow-ups from PR #$1" body
-  [ -z "$(gh issue list --repo "$repo" --state all --search "\"$title\" in:title" --json title | jq -r --arg t "$title" '.[] | select(.title == $t) | .title')" ] || return 0
+  local pr="$1" title="Follow-ups from PR #$1" body found
+  found=$(gh issue list --repo "$repo" --state all --search "\"$title\" in:title" --json title) || return 1
+  [ -z "$(jq -r --arg t "$title" '.[] | select(.title == $t) | .title' <<<"$found")" ] || return 0
+  gh label create ready-for-human --repo "$repo" --color D93F0B --description "Needs the owner; the factory never starts it" >/dev/null 2>&1 || true
   body=$(mktemp)
   { echo "Found while working #$ISSUE in PR #$pr, outside that issue's scope. The factory never starts this issue; the owner decides what to do with each item."; echo; cat "$2"; } >"$body"
-  gh issue create --repo "$repo" --title "$title" --label ready-for-human --body-file "$body" >/dev/null
+  gh issue create --repo "$repo" --title "$title" --label ready-for-human --body-file "$body" >/dev/null || return 1
   echo "Filed $title."
 }
 
@@ -176,7 +179,7 @@ if [ -f "$outbox/pr.md" ]; then
     gh pr close "$BRANCH" --repo "$repo" >/dev/null
     refuse_and_exit "$target" "$reason; the PR is closed"
   fi
-  [ ! -f "$outbox/follow-ups.md" ] || file_follow_ups "$pr" "$outbox/follow-ups.md"
+  [ ! -f "$outbox/follow-ups.md" ] || file_follow_ups "$pr" "$outbox/follow-ups.md" || exit 1
 fi
 if [ "$PROMPT" = gardener.md ]; then
   for f in "$outbox"/issues/*.md; do [ ! -f "$f" ] || create_issue "$f"; done

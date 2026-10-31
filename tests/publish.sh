@@ -15,6 +15,7 @@ case "$*" in
   "api --paginate repos/o/r/issues/"*"/comments"*) jq -r "${@: -1}" <<<"${COMMENTS:-[]}" ;;
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
+  "issue list "*) echo "${ISSUES:-[]}" ;;
   "pr create"*) sed 's/^/  body: /' "${@: -1}" >> "$GH_LOG"; echo "https://github.com/o/r/pull/50" ;;
 esac
 EOF
@@ -126,6 +127,8 @@ printf -- '- The upload screen logs the raw error.\n' > "$work/out/follow-ups.md
 run
 check "a draft file opens the PR as a draft" 'grep -q "gh pr create --repo o/r --base main --head $branch --draft" "$GH_LOG"'
 check "follow-ups open one ready-for-human issue named after the PR" 'grep -q "gh issue create --repo o/r --title Follow-ups from PR #50 --label ready-for-human" "$GH_LOG"'
+ISSUES='[{"title": "Follow-ups from PR #50"}]' OPEN_PR=50 run
+check "a second run opens no second follow-ups issue" 'grep -q "gh issue list" "$GH_LOG" && ! grep -q "issue create" "$GH_LOG"'
 
 fresh 'echo i > app.txt'
 printf '\n- x\n' > "$work/out/follow-ups.md"

@@ -66,6 +66,8 @@ class ReviewCLI(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
         self.assertIn("::warning::", first.stdout)
         self.assertEqual(self.status()["status"], "completed")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+        self.assertEqual(self.status()["head"], head.stdout.strip())
         for axis in ("standards", "spec"):
             report = json.loads((self.root / f"reports/round-1/{axis}.json").read_text())
             self.assertEqual(report["usage"]["input_tokens"], 10)

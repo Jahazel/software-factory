@@ -38,7 +38,9 @@ def main():
                 sys.exit("Review incomplete: a failed or interrupted round cannot retry.")
         directory = root / f"round-{len(rounds) + 1}"
         directory.mkdir()
-        status = {"status": "incomplete", "kind": sys.argv[1]}
+        head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+        status = {"status": "incomplete", "kind": sys.argv[1],
+                  "head": head.stdout.strip() if head.returncode == 0 else None}
         status_path = directory / "status.json"
         status_path.write_text(json.dumps(status) + "\n")
         processes = []
@@ -65,7 +67,7 @@ def main():
             while True:
                 elapsed = time.monotonic() - started
                 if elapsed >= limit:
-                    status["reason"] = "Review time limit reached; block and retain findings."
+                    status["reason"] = "Review time limit reached; open a draft PR and retain findings."
                     break
                 if all(process.poll() is not None for process in processes):
                     break

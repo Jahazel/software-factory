@@ -55,16 +55,16 @@ affects security/privacy/money/authentication, or misses a spec requirement.
 Keep unrelated discoveries in Open items without fixing them.
 
 When a serious finding needs fixes, make and verify them, commit, then write two
-new prompts containing the previous findings and the diff since the reviewed
-commit. Focus on those fixes and their direct effects. Run:
+new prompts containing the previous findings and the diff since the commit the
+previous round reviewed (`head` in its `status.json`). Focus on those fixes and their direct effects. Run:
 
 ```bash
 python3 "$FACTORY_REVIEW_RUNNER" fix /absolute/standards-fix.md /absolute/spec-fix.md
 ```
 
 Run at most two fix rounds. When the second fix round still reports serious
-findings, fix them only when the fix is small and local, and run no fourth round.
-Then follow the worker's draft PR path: list the remaining findings and evidence,
-and name every commit no completed round reviewed. Keep cheap local non-serious
+findings, run no fourth round. Follow the worker's draft PR path: list the remaining
+findings and evidence, and name every commit no completed round reviewed. A fix
+made after the last round counts as unreviewed; list it with its finding. Keep cheap local non-serious
 fixes only when verification proves them. These factory bounds replace the
 router's unlimited fix-round rule.

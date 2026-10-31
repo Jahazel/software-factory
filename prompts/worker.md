@@ -43,7 +43,7 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 2. Put `Closes #{{ISSUE}}` in the PR body. Close no other issue; the factory refuses a PR that does.
 3. Change nothing under `.github/`, and add no symbolic link or submodule. The factory refuses to push such a branch, because a pushed workflow file runs with the repository's secrets. When the issue needs such a change, block and say what the owner must change.
 4. Add a `Review findings` section to the PR body. Give each finding from `code-review` and the comment rules one line: what was wrong, in plain words, then `fixed` or `not adopted: <reason>`. Write `None.` when the reviews found nothing. The weekly gardener reads this section to find mistakes that repeat across PRs.
-5. When the PR body's `Open items` lists anything, also write each item to `{{OUTBOX}}/follow-ups.md`, one Markdown list item each, in plain words with file paths. The factory files them as one `ready-for-human` issue titled with the PR number, so the owner can track them after the PR merges.
+5. When the PR body's `Open items` lists anything, on the PR and draft PR paths only, also write each item to `{{OUTBOX}}/follow-ups.md`, one Markdown list item each, in plain words with file paths. The factory files them as one `ready-for-human` issue titled with the PR number, so the owner can track them after the PR merges.
 6. Stop. The factory pushes `{{BRANCH}}` and opens the PR for the owner.
 
 ## Open a draft PR when the review is not finished
