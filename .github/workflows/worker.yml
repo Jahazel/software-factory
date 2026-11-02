@@ -182,6 +182,14 @@ jobs:
             | tee "$dir/transcript.jsonl" \
             | jq -r --unbuffered 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text'
 
+      - name: Note why the agent stopped
+        if: always() && inputs.issue != '0' && steps.prepare.outputs.branch != ''
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          source "$RUNNER_TEMP/factory/scripts/lib.sh"
+          write_end_note "$RUNNER_TEMP/outbox" "$RUNNER_TEMP/worker/transcript.jsonl" "$RUN_URL"
+
       - name: Pack the outbox
         if: always() && steps.prepare.outputs.branch != ''
         run: bash "$RUNNER_TEMP/factory/scripts/pack-outbox.sh" "${{ steps.prepare.outputs.worktree }}" "$RUNNER_TEMP/outbox" "${{ steps.prepare.outputs.branch }}" "${{ steps.prepare.outputs.base }}"

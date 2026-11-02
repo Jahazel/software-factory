@@ -293,6 +293,23 @@ settle_issue() {
   gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label agent:in-progress >/dev/null
 }
 
+write_end_note() {
+  local outbox="$1" transcript="$2" run_url="$3" note f
+  for f in pr.md blocked.md; do [ ! -e "$outbox/$f" ] && [ ! -L "$outbox/$f" ] || return 0; done
+  [ -f "$transcript" ] || transcript=/dev/null
+  note=$(jq -nrR '[inputs | fromjson? | select(type == "object")] as $lines
+    | ($lines | map(select(.type == "result")) | last) as $r
+    | if ($lines | length) == 0 then "the agent did not start."
+      elif $r == null then "the agent ended with no final result, so a time limit, a crash, or a cancel stopped it."
+      elif $r.is_error != true then empty
+      else "the agent ended with an error"
+        + (if ($r.subtype // "success") == "success" then "" else " (\($r.subtype))" end)
+        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] | .[:300]
+           | if . == "" then "." else ": \(.)" end)
+      end' <"$transcript")
+  [ -z "$note" ] || printf 'Factory worker stopped: %s\n\nRun: %s\n' "$note" "$run_url" >"$outbox/blocked.md"
+}
+
 pr_lead_headings=("Decisions to confirm" "Review not finished")
 pr_required_headings=(Problem Summary Evidence "Merge Danger")
 pr_tail_headings=(Decisions "Test seams" "Review findings" "Open items")
