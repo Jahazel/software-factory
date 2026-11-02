@@ -305,7 +305,7 @@ write_end_note() {
       elif $r.is_error != true then empty
       else "the agent ended with an error"
         + (if ($r.subtype // "success") == "success" then "" else " (\($r.subtype))" end)
-        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] // "" | .[:300]
+        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] // "" | .[:300] | sub("\\s+$"; "")
            | if . == "" then "" else ": \(.)" end)
       end
     | if test("[.!?]$") then . else "\(.)." end' <"$transcript")

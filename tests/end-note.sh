@@ -73,4 +73,12 @@ check "an agent's own blocked note is kept" "Factory worker blocked: the test ne
 long=$(printf 'y%.0s' {1..400})
 run_end_note "$init"$'\n'"$(error_result ",\"result\":\"$long\"")"
 check "a long message keeps its first 300 characters" "$(stopped "the agent ended with an error: $(printf 'y%.0s' {1..300}).")"
+
+run_end_note "$init"$'\n'"$(error_result ',"result":"Stopped!  "')"
+check "trailing spaces are trimmed, and ! ends the sentence" "$(stopped "the agent ended with an error: Stopped!")"
+
+step_if=$(awk '$0 == "      - name: Note why the agent stopped" { on = 1; next } on && /^        if:/ { print; exit }' "$(dirname "$0")/../.github/workflows/worker.yml")
+if [[ "$step_if" == *"inputs.branch == ''"* && "$step_if" == *"inputs.prompt == ''"* ]]; then
+  echo "ok: the note step runs only for new-issue runs with the default prompt (no resolve, no gardener)"
+else echo "FAIL: the note step's condition lets resolve or gardener runs through: $step_if"; fails=1; fi
 exit "$fails"
