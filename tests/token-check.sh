@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib.sh"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
 fails=0
 fine_grained="github_pat_11ABCDEFG0aBcDeFgHiJkL_mNoPqRsTuVwXyZ0123456789aBcDeFgHiJkLmNoPqRsTuVwXyZ01234"
 classic="ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"
@@ -26,16 +28,17 @@ got=$(printf '%s\0' "X=$fine_grained" | leaked_token_names)
 if [[ "$got" != *github_pat_* ]]; then echo "ok: the token value is never printed"; else echo "FAIL: the token value was printed"; fails=1; fi
 
 lib="$(cd "$(dirname "$0")/.." && pwd)/scripts/lib.sh"
-guard() { env -i PATH="$PATH" "$@" bash -c 'source "$1"; fail_on_leaked_token "the test step"; echo "the step went on"' _ "$lib" 2>&1; }
-out=$(guard GH_TOKEN="$actions") && [ "$out" = "the step went on" ] \
+guard() {
+  local path="$1"; shift
+  env -i PATH="$path" "$@" bash -c 'source "$1"; fail_on_leaked_token "the test step"; echo "the step went on"' _ "$lib" 2>&1
+}
+out=$(guard "$PATH" GH_TOKEN="$actions") && [ "$out" = "the step went on" ] \
   && echo "ok: a clean environment lets the step go on" || { echo "FAIL: a clean environment stopped the step: $out"; fails=1; }
-if out=$(guard FACTORY_TOKEN="$fine_grained"); then echo "FAIL: a leaked token did not stop the step"; fails=1
+if out=$(guard "$PATH" FACTORY_TOKEN="$fine_grained"); then echo "FAIL: a leaked token did not stop the step"; fails=1
 elif [ "$out" = "::error::A personal GitHub token is in FACTORY_TOKEN, in the test step. The step stopped." ]; then
   echo "ok: a leaked token stops the step and names only the variable"
 else echo "FAIL: unexpected message: $out"; fails=1; fi
-mkdir -p "${TMPDIR:-/tmp}/no-env-$$"; printf '#!/bin/sh\nexit 3\n' > "${TMPDIR:-/tmp}/no-env-$$/env"; chmod +x "${TMPDIR:-/tmp}/no-env-$$/env"
-if out=$(env -i PATH="${TMPDIR:-/tmp}/no-env-$$:$PATH" bash -c 'source "$1"; fail_on_leaked_token "the test step"; echo "the step went on"' _ "$lib" 2>&1); then
-  echo "FAIL: a failed env -0 let the step go on"; fails=1
+mkdir -p "$work/bin"; printf '#!/bin/sh\nexit 3\n' > "$work/bin/env"; chmod +x "$work/bin/env"
+if guard "$work/bin:$PATH" >/dev/null; then echo "FAIL: a failed env -0 let the step go on"; fails=1
 else echo "ok: a failed env -0 stops the step"; fi
-rm -rf "${TMPDIR:-/tmp}/no-env-$$"
 exit "$fails"
