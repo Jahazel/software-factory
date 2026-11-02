@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rules that the orchestrator, the settle job, prepare-issue, publish, and check-pr share. Source this file; it runs nothing.
+# Rules that the orchestrator, the settle job, prepare-issue, publish, check-pr, and the worker job share. Source this file; it runs nothing.
 # Its GitHub rules need GH_TOKEN and GITHUB_REPOSITORY.
 publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
@@ -299,15 +299,15 @@ write_end_note() {
   [ -f "$transcript" ] || transcript=/dev/null
   note=$(jq -nrR '[inputs | fromjson? | select(type == "object")] as $lines
     | ($lines | map(select(.type == "result")) | last) as $r
-    | if ($lines | length) == 0 then "the agent did not start."
-      elif $r == null then "the agent ended with no final result, so a time limit, a crash, or a cancel stopped it."
+    | if ($lines | length) == 0 then "the agent did not start"
+      elif $r == null then "the agent ended with no final result, so a time limit, a crash, or a cancel stopped it"
       elif $r.is_error != true then empty
       else "the agent ended with an error"
         + (if ($r.subtype // "success") == "success" then "" else " (\($r.subtype))" end)
-        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] | .[:300]
-           | if . == "" then "." else ": \(.)" end)
+        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] // "" | .[:300] | sub("\\.$"; "")
+           | if . == "" then "" else ": \(.)" end)
       end' <"$transcript")
-  [ -z "$note" ] || printf 'Factory worker stopped: %s\n\nRun: %s\n' "$note" "$run_url" >"$outbox/blocked.md"
+  [ -z "$note" ] || printf 'Factory worker stopped: %s. Run: %s\n\nTo retry, remove `agent:blocked`.\n' "$note" "$run_url" >"$outbox/blocked.md"
 }
 
 pr_lead_headings=("Decisions to confirm" "Review not finished")
