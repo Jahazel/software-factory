@@ -177,6 +177,9 @@ jobs:
               -e "s|{{OUTBOX}}|$RUNNER_TEMP/outbox|g" \
               "$prompts/$PROMPT" > "$dir/prompt.md"
           { echo; echo "## Project rules"; echo; cat "${{ inputs.rules }}"; } >> "$dir/prompt.md"
+          source "$RUNNER_TEMP/factory/scripts/lib.sh"
+          leaked=$(env -0 | leaked_token_names)
+          [ -z "$leaked" ] || { echo "::error::A personal GitHub token reached the agent's environment in $leaked. The agent did not start."; exit 1; }
           claude -p --model claude-opus-5-5 --effort medium --dangerously-skip-permissions \
             --output-format stream-json --verbose < "$dir/prompt.md" \
             | tee "$dir/transcript.jsonl" \

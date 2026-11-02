@@ -8,6 +8,7 @@ check() {
 job() { awk -v job="  $2:" '$0 == job { on = 1; next } on && /^  [a-z][a-z-]*:$/ { on = 0 } on && !/^ *#/' "$root/.github/workflows/$1"; }
 
 check "the agent's work job exists and never names the owner's token" 'job worker.yml work | grep -q "Work the issue" && ! job worker.yml work | grep -q FACTORY_GITHUB_TOKEN'
+check "the work job checks for a personal token right before the agent starts" 'job worker.yml work | grep -A1 "env -0 | leaked_token_names" | grep -q "exit 1" && job worker.yml work | grep -A3 "env -0 | leaked_token_names" | grep -q "claude -p"'
 check "the work job keeps no git credentials" 'job worker.yml work | grep -q "persist-credentials: false"'
 check "the work job cannot write to GitHub" '! job worker.yml work | grep -qE ": write"'
 check "the publish job holds the token and runs no agent" 'job worker.yml publish | grep -q FACTORY_GITHUB_TOKEN && ! job worker.yml publish | grep -qE "claude|CLAUDE_CODE_OAUTH_TOKEN"'

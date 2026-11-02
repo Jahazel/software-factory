@@ -312,6 +312,15 @@ write_end_note() {
   [ -z "$note" ] || printf 'Factory worker stopped: %s Run: %s\n\n%s\n' "$note" "$run_url" "$retry_hint" >"$outbox/blocked.md"
 }
 
+leaked_token_names() {
+  local pair names=""
+  local personal_token_pattern='(^|[^A-Za-z0-9_-])(github_pat_[A-Za-z0-9_]{20,}|gh[pour]_[A-Za-z0-9]{30,})'
+  while IFS= read -r -d '' pair; do
+    [[ "$pair" =~ $personal_token_pattern ]] && names+="${names:+,}${pair%%=*}"
+  done
+  echo "$names"
+}
+
 pr_lead_headings=("Decisions to confirm" "Review not finished")
 pr_required_headings=(Problem Summary Evidence "Merge Danger")
 pr_tail_headings=(Decisions "Test seams" "Review findings" "Open items")
