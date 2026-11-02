@@ -352,23 +352,24 @@ pr_body_refusal() {
 
 # Prints the type that file $1's first bytes show: png, jpg, webp, webm, or nothing.
 evidence_type() {
-  local hex
+  local hex lead
   hex=$(od -An -v -N64 -tx1 "$1" | tr -d ' \n')
   case "$hex" in
     89504e470d0a1a0a*) echo png ;;
     ffd8ff*) echo jpg ;;
     52494646????????57454250*) echo webp ;;
-    1a45dfa3*7765626d*) echo webm ;;
+    1a45dfa3*7765626d*) lead=${hex%%7765626d*}; [ $((${#lead} % 2)) = 1 ] || echo webm ;;
   esac
 }
 
-# Prints each name that outbox $1's pr.md refers to as ](./name), once, outside code: the
-# references gh rewrites to the uploaded file.
+# Prints each name that outbox $1's pr.md shows as an image ![alt](./name), once, outside code:
+# the references gh rewrites to the uploaded file.
 evidence_refs() {
-  pr_body_text "$1" | sed 's/`[^`]*`//g' | { grep -oE '\]\(\./[^)[:space:]]+\)' || true; } | sed -E 's/^\]\(\.\/(.*)\)$/\1/' | awk '!seen[$0]++'
+  pr_body_text "$1" | sed 's/`[^`]*`//g' | { grep -oE '!\[[^]]*\]\(\./[^)[:space:]]+\)' || true; } | sed -E 's/^.*\]\(\.\/(.*)\)$/\1/' | awk '!seen[$0]++'
 }
 
-# Prints why outbox $1's evidence/ folder cannot go into the PR, or nothing.
+# Prints why outbox $1's evidence/ folder cannot go into the PR, or nothing. A subshell keeps the
+# shopt change local.
 evidence_refusal() (
   shopt -s dotglob nullglob
   local dir="$1/evidence" f name files=() names="" refs ref
@@ -383,7 +384,7 @@ evidence_refusal() (
     [ -f "$f" ] && [ ! -L "$f" ] || { echo "evidence/$name is not a plain file"; exit 0; }
     [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*\.(png|jpg|webp|webm)$ && "$name" != *..* ]] \
       || { echo "evidence/$name has a name the factory does not accept: use letters, digits, \".\", \"_\", and \"-\", and end in .png, .jpg, .webp, or .webm"; exit 0; }
-    [ "$(wc -c <"$f")" -le "$evidence_max_bytes" ] || { echo "evidence/$name is larger than $evidence_max_bytes bytes"; exit 0; }
+    [ "$(wc -c <"$f")" -lt "$evidence_max_bytes" ] || { echo "evidence/$name is not under $evidence_max_bytes bytes"; exit 0; }
     [ "$(evidence_type "$f")" = "${name##*.}" ] || { echo "evidence/$name is not a ${name##*.} file"; exit 0; }
   done
   refs=$(evidence_refs "$1")

@@ -181,11 +181,11 @@ mkdir "$work/out/evidence"; png saved.png
 write_pr $'\n![The saved form](./saved.png)\n'
 printf -- '- A loose end.\n' > "$work/out/follow-ups.md"
 partial=0; ATTACH_EXIT=1 run || partial=$?
-check "a partial upload keeps the PR, notes it on the PR, and blocks nothing" '[ "$partial" = 0 ] && grep -q "PR #50 is open" "$work/run.log" && grep -q "issues/50/comments -f body=Factory publish: GitHub did not take every evidence file" "$GH_LOG" && ! grep -q "labels\[\]=agent:blocked" "$GH_LOG" && grep -q "issue create" "$GH_LOG"'
+check "a partial upload keeps the PR, notes it on the PR, and blocks nothing" '[ "$partial" = 0 ] && grep -q "PR #50 is open" "$work/run.log" && grep -q "issues/50/comments -f body=Factory publish: gh reported an error after it opened this PR" "$GH_LOG" && ! grep -q "labels\[\]=agent:blocked" "$GH_LOG" && grep -q "issue create" "$GH_LOG"'
 
 fresh 'echo o > app.txt'
 failed=0; ATTACH_EXIT=1 run || failed=$?
-check "a failed gh pr create with no evidence still exits 1" '[ "$failed" = 1 ] && ! grep -q "did not take every evidence file" "$GH_LOG"'
+check "a failed gh pr create with no evidence still exits 1" '[ "$failed" = 1 ] && ! grep -q "after it opened this PR" "$GH_LOG"'
 
 git -C "$work/origin.git" update-ref -d "refs/heads/$branch"
 outbox 'echo f > app.txt'

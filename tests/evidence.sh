@@ -31,14 +31,16 @@ check "a referenced png passes" ""
 fresh_outbox "$four"$'\n![The saved form](./saved.png)'; printf 'hello' >"$out/evidence/saved.png"
 check "a text file named .png is refused" "evidence/saved.png is not a png file"
 
-fresh_outbox "$four"$'\n![a](./a.jpg)\n![b](./b.webp)\n[c](./c.webm)'; jpg a.jpg; webp b.webp; webm c.webm
+fresh_outbox "$four"$'\n![a](./a.jpg)\n![b](./b.webp)\n![c](./c.webm)'; jpg a.jpg; webp b.webp; webm c.webm
 check "a referenced jpg, webp, and webm pass" ""
 
 fresh_outbox "$four"$'\n![a](./a.jpg)'; png a.jpg
 check "png bytes named .jpg are refused" "evidence/a.jpg is not a jpg file"
 
-fresh_outbox "$four"$'\n[c](./c.webm)'; printf '\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\x82\x88matroska' >"$out/evidence/c.webm"
+fresh_outbox "$four"$'\n![c](./c.webm)'; printf '\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\x82\x88matroska' >"$out/evidence/c.webm"
 check "a Matroska file named .webm is refused" "evidence/c.webm is not a webm file"
+printf '\x1a\x45\xdf\xa3\x07\x76\x56\x26\xd0' >"$out/evidence/c.webm"
+check "webm bytes half a byte off are refused" "evidence/c.webm is not a webm file"
 
 for name in a.gif a.jpeg A.PNG 'a b.png' .hidden.png -a.png 'a..png' noext; do
   fresh_outbox "$four"; png "$name"
@@ -54,10 +56,10 @@ check "a symbolic link inside evidence/ is refused" "evidence/a.png is not a pla
 fresh_outbox "$four"; rmdir "$out/evidence"; mkdir "$work/elsewhere"; ln -s "$work/elsewhere" "$out/evidence"
 check "evidence/ as a symbolic link is refused" "evidence is not a folder"
 
-fresh_outbox "$four"$'\n![a](./a.png)'; png a.png; truncate -s 10485760 "$out/evidence/a.png"
-check "a file of exactly 10 MB passes" ""
-truncate -s 10485761 "$out/evidence/a.png"
-check "a file over 10 MB is refused" "evidence/a.png is larger than 10485760 bytes"
+fresh_outbox "$four"$'\n![a](./a.png)'; png a.png; truncate -s 10485759 "$out/evidence/a.png"
+check "a file one byte under 10 MB passes" ""
+truncate -s 10485760 "$out/evidence/a.png"
+check "a file of 10 MB is refused" "evidence/a.png is not under 10485760 bytes"
 
 refs=""; for i in $(seq 1 20); do refs+=$'\n'"![s$i](./s$i.png)"; done
 fresh_outbox "$four$refs"; for i in $(seq 1 20); do png "s$i.png"; done
@@ -78,13 +80,15 @@ fresh_outbox "$four"$'\n![a](./a.png) and [again](./a.png)\n```text\n![x](./x.pn
 check "a file referred to twice passes, and fenced, inline-code, and remote references do not count" ""
 
 fresh_outbox "$four"$'\n[the guide](./docs/guide.md)'
-check "a ./ link with a folder in it is refused as a missing file" "pr.md refers to ./docs/guide.md, which is not in evidence/"
+check "a ./ link that is not an image is not a reference" ""
+fresh_outbox "$four"$'\n![a shot](./shots/a.png)'
+check "an image in a folder is refused as a missing file" "pr.md refers to ./shots/a.png, which is not in evidence/"
 
-fresh_outbox "$four"$'\n[the body](./../pr.md)'
+fresh_outbox "$four"$'\n![the body](./../pr.md)'
 check "a reference that leaves evidence/ is refused" "pr.md refers to ./../pr.md, which is not in evidence/"
 
 prompt="$root/prompts/worker.md"
-if grep -q "at most $evidence_max_files files" "$prompt" && grep -q "up to $((evidence_max_bytes / 1048576)) MB" "$prompt" \
+if grep -q "at most $evidence_max_files files" "$prompt" && grep -q "under $((evidence_max_bytes / 1048576)) MB" "$prompt" \
   && grep -q '{{OUTBOX}}/evidence/' "$prompt"; then
   echo "ok: the worker prompt states the evidence limits lib.sh enforces"
 else

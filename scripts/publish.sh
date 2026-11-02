@@ -7,6 +7,8 @@
 # writes issues/*.md ("title: ..." and "labels: ..." lines, a blank line, the body), report.md,
 # and close.
 # Exit 0 after a refusal: it blocks the issue or PR. Exit 1 when GitHub fails: settle then blocks.
+# When gh opens the PR with evidence attached but then reports an error, publish notes it on the PR
+# and goes on.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 repo="$GITHUB_REPOSITORY"
@@ -107,8 +109,9 @@ open_pr() {
     --title "$(head -1 "$outbox/pr.md" | sed -E 's/^#+ *//')" ${attach[@]+"${attach[@]}"} --body-file "$body") || status=$?
   [[ "$url" =~ /pull/([0-9]+)$ ]] || { echo "gh pr create printed no PR URL: $url" >&2; return 1; }
   echo "${BASH_REMATCH[1]}"
-  [ "$status" = 0 ] || [ "${#attach[@]}" = 0 ] || return "$partial_upload"
-  [ "$status" = 0 ] || return 1
+  [ "$status" = 0 ] && return 0
+  [ "${#attach[@]}" -gt 0 ] && return "$partial_upload"
+  return 1
 }
 
 file_follow_ups() {
@@ -188,9 +191,9 @@ if [ -f "$outbox/head.bundle" ]; then
   echo "Pushed $BRANCH."
 fi
 if [ -f "$outbox/pr.md" ]; then
-  uploaded=0
-  pr=$(open_pr "$outbox" "$([ ! -e "$outbox/draft" ] || echo draft)") || uploaded=$?
-  [ "$uploaded" = 0 ] || [ "$uploaded" = "$partial_upload" ] || exit 1
+  open_status=0
+  pr=$(open_pr "$outbox" "$([ ! -e "$outbox/draft" ] || echo draft)") || open_status=$?
+  [ "$open_status" = 0 ] || [ "$open_status" = "$partial_upload" ] || exit 1
   echo "PR #$pr is open."
   reason=$(linked_issues | closing_refusal "GitHub says the PR") || exit 1
   if [ -n "$reason" ]; then
@@ -198,9 +201,9 @@ if [ -f "$outbox/pr.md" ]; then
     refuse_and_exit "$target" "$reason; the PR is closed"
   fi
   [ ! -f "$outbox/follow-ups.md" ] || file_follow_ups "$pr" "$outbox/follow-ups.md" || exit 1
-  if [ "$uploaded" = "$partial_upload" ]; then
+  if [ "$open_status" = "$partial_upload" ]; then
     note=$(mktemp)
-    echo "Factory publish: GitHub did not take every evidence file, so some images in this PR do not show. Attach them with \`gh pr edit --attach\` from the run's outbox artifact. Run: $RUN_URL" >"$note"
+    echo "Factory publish: gh reported an error after it opened this PR, so some evidence images may be missing. Attach them with \`gh pr edit --attach\` from the run's outbox artifact. Run: $RUN_URL" >"$note"
     post_once "$pr" "$note" || exit 1
   fi
 fi
