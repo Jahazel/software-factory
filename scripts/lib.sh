@@ -4,6 +4,8 @@
 publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
 retry_hint="To retry, remove \`agent:blocked\`."
+evidence_max_files=20
+evidence_max_bytes=10485760
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
 # by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
@@ -316,13 +318,21 @@ pr_lead_headings=("Decisions to confirm" "Review not finished")
 pr_required_headings=(Problem Summary Evidence "Merge Danger")
 pr_tail_headings=(Decisions "Test seams" "Review findings" "Open items")
 
+# Prints the body of outbox $1's pr.md, the lines after the title and blank line, without its
+# fenced code blocks.
+pr_body_text() {
+  tail -n +3 "$1/pr.md" | awk '
+    { line = $0; sub(/[ \t\r]+$/, "", line); sub(/^ ? ? ?/, "", line) }
+    fence != "" { if (line ~ /^(`+|~+)$/ && substr(line, 1, 1) == substr(fence, 1, 1) && length(line) >= length(fence)) fence = ""; next }
+    match(line, /^(```+|~~~+)/) { m = substr(line, 1, RLENGTH); if (m ~ /^~/ || index(substr(line, RLENGTH + 1), "`") == 0) { fence = m; next } }
+    { print }'
+}
+
 pr_body_refusal() {
   local allowed=("${pr_lead_headings[@]}" "${pr_required_headings[@]}" "${pr_tail_headings[@]}")
   local found name required i j last=-1 seen=" " hint
-  found=$(tail -n +3 "$1/pr.md" | awk '
+  found=$(pr_body_text "$1" | awk '
     { sub(/[ \t\r]+$/, ""); line = $0; sub(/^ ? ? ?/, "", line) }
-    fence != "" { if (line ~ /^(`+|~+)$/ && substr(line, 1, 1) == substr(fence, 1, 1) && length(line) >= length(fence)) fence = ""; next }
-    match(line, /^(```+|~~~+)/) { m = substr(line, 1, RLENGTH); if (m ~ /^~/ || index(substr(line, RLENGTH + 1), "`") == 0) { fence = m; next } }
     line ~ /^##[ \t]+[^ \t]/ { sub(/^##[ \t]+/, "", line); sub(/[ \t]+#+$/, "", line); print line }')
   hint="; found: $(paste -sd, - <<<"$found" | sed 's/,/, /g'); allowed, in this order: $(printf '%s\n' "${allowed[@]}" | paste -sd, - | sed 's/,/, /g')"
   while IFS= read -r name; do
@@ -339,3 +349,48 @@ pr_body_refusal() {
     grep -qxF -- "$required" <<<"$found" || { echo "the PR body has no \"## $required\" section$hint"; return; }
   done
 }
+
+# Prints the type that file $1's first bytes show: png, jpg, webp, webm, or nothing.
+evidence_type() {
+  local hex
+  hex=$(od -An -v -N64 -tx1 "$1" | tr -d ' \n')
+  case "$hex" in
+    89504e470d0a1a0a*) echo png ;;
+    ffd8ff*) echo jpg ;;
+    52494646????????57454250*) echo webp ;;
+    1a45dfa3*7765626d*) echo webm ;;
+  esac
+}
+
+# Prints each name that outbox $1's pr.md refers to as ](./name), once, outside code: the
+# references gh rewrites to the uploaded file.
+evidence_refs() {
+  pr_body_text "$1" | sed 's/`[^`]*`//g' | { grep -oE '\]\(\./[^)[:space:]]+\)' || true; } | sed -E 's/^\]\(\.\/(.*)\)$/\1/' | awk '!seen[$0]++'
+}
+
+# Prints why outbox $1's evidence/ folder cannot go into the PR, or nothing.
+evidence_refusal() (
+  shopt -s dotglob nullglob
+  local dir="$1/evidence" f name files=() names="" refs ref
+  if [ -e "$dir" ]; then
+    [ -d "$dir" ] && [ ! -L "$dir" ] || { echo "evidence is not a folder"; exit 0; }
+    files=("$dir"/*)
+  fi
+  for f in ${files[@]+"${files[@]}"}; do names+="${f##*/}"$'\n'; done
+  [ "${#files[@]}" -le "$evidence_max_files" ] || { echo "evidence/ holds ${#files[@]} files; the limit is $evidence_max_files"; exit 0; }
+  for f in ${files[@]+"${files[@]}"}; do
+    name=${f##*/}
+    [ -f "$f" ] && [ ! -L "$f" ] || { echo "evidence/$name is not a plain file"; exit 0; }
+    [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*\.(png|jpg|webp|webm)$ && "$name" != *..* ]] \
+      || { echo "evidence/$name has a name the factory does not accept: use letters, digits, \".\", \"_\", and \"-\", and end in .png, .jpg, .webp, or .webm"; exit 0; }
+    [ "$(wc -c <"$f")" -le "$evidence_max_bytes" ] || { echo "evidence/$name is larger than $evidence_max_bytes bytes"; exit 0; }
+    [ "$(evidence_type "$f")" = "${name##*.}" ] || { echo "evidence/$name is not a ${name##*.} file"; exit 0; }
+  done
+  refs=$(evidence_refs "$1")
+  while IFS= read -r ref; do
+    [ -z "$ref" ] || grep -qxF -- "$ref" <<<"$names" || { echo "pr.md refers to ./$ref, which is not in evidence/"; exit 0; }
+  done <<<"$refs"
+  for f in ${files[@]+"${files[@]}"}; do
+    grep -qxF -- "${f##*/}" <<<"$refs" || { echo "evidence/${f##*/} is not referred to in pr.md"; exit 0; }
+  done
+)

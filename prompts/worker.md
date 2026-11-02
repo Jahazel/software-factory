@@ -23,6 +23,7 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 | The spec (`code-review`) | Issue #{{ISSUE}}, and its parent issue when it has one. |
 | Access or an artifact to reproduce a bug (`diagnosing-bugs`) | None is available. Block. |
 | An owner decision | Make your best guess, record it under `Decisions to confirm`, and open a draft PR. |
+| Uploading `verify` proof into the PR (`pr`) | Copy the files into `{{OUTBOX}}/evidence/`, as "Open the PR" says. The factory attaches them. |
 
 ## Do the work
 
@@ -44,8 +45,9 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 3. Change nothing under `.github/`, and add no symbolic link or submodule. The factory refuses to push such a branch, because a pushed workflow file runs with the repository's secrets. When the issue needs such a change, block and say what the owner must change.
 4. Add a `Review findings` section to the PR body. Give each finding from `code-review` and the comment rules one line: what was wrong, in plain words, then `fixed` or `not adopted: <reason>`. Write `None.` when the reviews found nothing. The weekly gardener reads this section to find mistakes that repeat across PRs.
 5. When the PR body's `Open items` lists anything, on the PR and draft PR paths only, also write each item to `{{OUTBOX}}/follow-ups.md`, one Markdown list item each, in plain words with file paths. The factory files them as one `ready-for-human` issue titled with the PR number, so the owner can track them after the PR merges.
-6. Run `bash "$FACTORY_PR_CHECK" {{OUTBOX}}`. It prints nothing when the PR body's headings follow step 1. When it prints a reason, fix `pr.md` and run it again. The factory runs the same check, and when it fails, it opens no PR and blocks the issue.
-7. Stop. The factory pushes `{{BRANCH}}` and opens the PR for the owner.
+6. When `verify` saved screenshots or videos that prove the change, copy the ones that show it into `{{OUTBOX}}/evidence/`: screen-sized shots, not full-page ones, at most 20 files. Each file is a `.png`, `.jpg`, `.webp`, or `.webm` of up to 10 MB, and its name uses only letters, digits, `.`, `_`, and `-`. Show each file in the `Evidence` section on a line of its own, as `![what it shows](./name.png)`. Every file needs a reference, and every `./name` reference needs a file. The factory uploads the files into the PR.
+7. Run `bash "$FACTORY_PR_CHECK" {{OUTBOX}}`. It prints nothing when the PR body's headings follow step 1 and the evidence files follow step 6. When it prints a reason, fix the outbox and run it again. The factory runs the same check, and when it fails, it opens no PR and blocks the issue.
+8. Stop. The factory pushes `{{BRANCH}}` and opens the PR for the owner.
 
 ## Open a draft PR when the owner must check something
 
