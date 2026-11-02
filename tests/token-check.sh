@@ -16,7 +16,7 @@ check "the Actions token and the Claude token are allowed" "" \
   "GH_TOKEN=$actions" "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789" "HOME=/home/runner"
 check "a fine-grained token is named" "FACTORY_TOKEN" "GH_TOKEN=$actions" "FACTORY_TOKEN=$fine_grained"
 for prefix in ghp gho ghu ghr; do
-  check "a classic $prefix token is named" "OTHER" "OTHER=${prefix}_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"
+  check "a $prefix token is named" "OTHER" "OTHER=${prefix}_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"
 done
 check "a token inside a longer value is named, once per variable" "GIT_CONFIG_VALUE_0" \
   "GIT_CONFIG_VALUE_0=AUTHORIZATION: bearer $fine_grained and $fine_grained"
@@ -24,4 +24,18 @@ check "a token on a later line of a value is named, not its lines" "MULTI" $'MUL
 check "each leaking variable is named" "A,B" "A=$fine_grained" "SAFE=x" "B=$classic"
 got=$(printf '%s\0' "X=$fine_grained" | leaked_token_names)
 if [[ "$got" != *github_pat_* ]]; then echo "ok: the token value is never printed"; else echo "FAIL: the token value was printed"; fails=1; fi
+
+lib="$(cd "$(dirname "$0")/.." && pwd)/scripts/lib.sh"
+guard() { env -i PATH="$PATH" "$@" bash -c 'source "$1"; fail_on_leaked_token "the test step"; echo "the step went on"' _ "$lib" 2>&1; }
+out=$(guard GH_TOKEN="$actions") && [ "$out" = "the step went on" ] \
+  && echo "ok: a clean environment lets the step go on" || { echo "FAIL: a clean environment stopped the step: $out"; fails=1; }
+if out=$(guard FACTORY_TOKEN="$fine_grained"); then echo "FAIL: a leaked token did not stop the step"; fails=1
+elif [ "$out" = "::error::A personal GitHub token is in FACTORY_TOKEN, in the test step. The step stopped." ]; then
+  echo "ok: a leaked token stops the step and names only the variable"
+else echo "FAIL: unexpected message: $out"; fails=1; fi
+mkdir -p "${TMPDIR:-/tmp}/no-env-$$"; printf '#!/bin/sh\nexit 3\n' > "${TMPDIR:-/tmp}/no-env-$$/env"; chmod +x "${TMPDIR:-/tmp}/no-env-$$/env"
+if out=$(env -i PATH="${TMPDIR:-/tmp}/no-env-$$:$PATH" bash -c 'source "$1"; fail_on_leaked_token "the test step"; echo "the step went on"' _ "$lib" 2>&1); then
+  echo "FAIL: a failed env -0 let the step go on"; fails=1
+else echo "ok: a failed env -0 stops the step"; fi
+rm -rf "${TMPDIR:-/tmp}/no-env-$$"
 exit "$fails"

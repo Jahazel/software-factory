@@ -321,6 +321,12 @@ leaked_token_names() {
   echo "$names"
 }
 
+fail_on_leaked_token() {
+  local leaked
+  leaked=$(set -o pipefail; env -0 | leaked_token_names) || { echo "::error::Could not read the environment in $1. The step stopped."; exit 1; }
+  [ -z "$leaked" ] || { echo "::error::A personal GitHub token is in $leaked, in $1. The step stopped."; exit 1; }
+}
+
 pr_lead_headings=("Decisions to confirm" "Review not finished")
 pr_required_headings=(Problem Summary Evidence "Merge Danger")
 pr_tail_headings=(Decisions "Test seams" "Review findings" "Open items")

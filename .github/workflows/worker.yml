@@ -70,8 +70,7 @@ jobs:
       - name: Check for a personal GitHub token
         run: |
           source "$RUNNER_TEMP/factory/scripts/lib.sh"
-          leaked=$(env -0 | leaked_token_names)
-          [ -z "$leaked" ] || { echo "::error::A personal GitHub token reached the work job's environment in $leaked. No setup or agent step ran."; exit 1; }
+          fail_on_leaked_token "the work job, before setup"
 
       - uses: actions/setup-node@v5
         with:
@@ -184,8 +183,7 @@ jobs:
               "$prompts/$PROMPT" > "$dir/prompt.md"
           { echo; echo "## Project rules"; echo; cat "${{ inputs.rules }}"; } >> "$dir/prompt.md"
           source "$RUNNER_TEMP/factory/scripts/lib.sh"
-          leaked=$(env -0 | leaked_token_names)
-          [ -z "$leaked" ] || { echo "::error::A personal GitHub token reached the agent's environment in $leaked. The agent did not start."; exit 1; }
+          fail_on_leaked_token "the agent step"
           claude -p --model claude-opus-5-5 --effort medium --dangerously-skip-permissions \
             --output-format stream-json --verbose < "$dir/prompt.md" \
             | tee "$dir/transcript.jsonl" \
