@@ -183,7 +183,7 @@ jobs:
             | jq -r --unbuffered 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text'
 
       - name: Note why the agent stopped
-        if: always() && inputs.branch == '' && steps.prepare.outputs.branch != ''
+        if: always() && inputs.branch == '' && inputs.prompt != 'gardener.md' && steps.prepare.outputs.branch != ''
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

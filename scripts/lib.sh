@@ -3,6 +3,7 @@
 # Its GitHub rules need GH_TOKEN and GITHUB_REPOSITORY.
 publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
+retry_hint="To retry, remove \`agent:blocked\`."
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
 # by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
@@ -268,7 +269,7 @@ block_issue() {
   if ! grep -qxF "$2" <<<"$comments"; then
     gh api "repos/$GITHUB_REPOSITORY/issues/$1/comments" -f body="$2
 
-To retry, remove \`agent:blocked\`." >/dev/null || return 1
+$retry_hint" >/dev/null || return 1
   fi
   gh api "repos/$GITHUB_REPOSITORY/issues/$1/labels" -f 'labels[]=agent:blocked' >/dev/null
 }
@@ -304,10 +305,11 @@ write_end_note() {
       elif $r.is_error != true then empty
       else "the agent ended with an error"
         + (if ($r.subtype // "success") == "success" then "" else " (\($r.subtype))" end)
-        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] // "" | .[:300] | sub("\\.$"; "")
+        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] // "" | .[:300]
            | if . == "" then "" else ": \(.)" end)
-      end' <"$transcript")
-  [ -z "$note" ] || printf 'Factory worker stopped: %s. Run: %s\n\nTo retry, remove `agent:blocked`.\n' "$note" "$run_url" >"$outbox/blocked.md"
+      end
+    | if test("[.!?]$") then . else "\(.)." end' <"$transcript")
+  [ -z "$note" ] || printf 'Factory worker stopped: %s Run: %s\n\n%s\n' "$note" "$run_url" "$retry_hint" >"$outbox/blocked.md"
 }
 
 pr_lead_headings=("Decisions to confirm" "Review not finished")

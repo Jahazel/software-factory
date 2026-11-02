@@ -23,38 +23,40 @@ check() {
   else printf 'FAIL: %s\n--- want\n%s\n--- got\n%s\n' "$name" "$want" "$got"; fails=1; fi
 }
 
-retry='To retry, remove `agent:blocked`.'
-stopped() { printf 'Factory worker stopped: %s. Run: https://run\n\n%s' "$1" "$retry"; }
-result() { printf '{"type":"result","subtype":"success","is_error":true%s}' "$1"; }
+stopped() { printf 'Factory worker stopped: %s Run: https://run\n\n%s' "$1" "$retry_hint"; }
+error_result() { printf '{"type":"result","subtype":"success","is_error":true%s}' "$1"; }
 
 run_end_note "$init"$'\n'"$max_turns"
-check "a turn limit names the limit" "$(stopped "the agent ended with an error (error_max_turns): Reached maximum number of turns (1)")"
+check "a turn limit names the limit" "$(stopped "the agent ended with an error (error_max_turns): Reached maximum number of turns (1).")"
 
 run_end_note "$init"$'\n'"$api_error"
-check "an API error quotes Claude Code's message" "$(stopped "the agent ended with an error: There's an issue with the selected model (claude-x). It may not exist or you may not have access to it")"
+check "an API error quotes Claude Code's message" "$(stopped "the agent ended with an error: There's an issue with the selected model (claude-x). It may not exist or you may not have access to it.")"
 
-run_end_note "$init"$'\n'"$(result ',"result":"from result","errors":["from errors"]')"
-check "the result text wins over the errors list" "$(stopped "the agent ended with an error: from result")"
+run_end_note "$init"$'\n'"$(error_result ',"result":"from result","errors":["from errors"]')"
+check "the result text wins over the errors list" "$(stopped "the agent ended with an error: from result.")"
 
-run_end_note "$init"$'\n'"$(result ',"result":"first line\nsecond line"')"
-check "only the first line of the message is kept" "$(stopped "the agent ended with an error: first line")"
+run_end_note "$init"$'\n'"$(error_result ',"result":"first line\nsecond line"')"
+check "only the first line of the message is kept" "$(stopped "the agent ended with an error: first line.")"
 
 for empty in ',"result":""' ',"errors":[]' ''; do
-  run_end_note "$init"$'\n'"$(result "$empty")"
-  check "an empty message ($empty) says only that the agent ended with an error" "$(stopped "the agent ended with an error")"
+  run_end_note "$init"$'\n'"$(error_result "$empty")"
+  check "an empty or missing message says only that the agent ended with an error" "$(stopped "the agent ended with an error.")"
 done
 
-run_end_note "$init"$'\n'"$(result ',"result":"an early error"')"$'\n'"$clean"
+run_end_note "$init"$'\n'"$(error_result ',"result":"Is the model right?"')"
+check "a message that ends a sentence gets no extra period" "$(stopped "the agent ended with an error: Is the model right?")"
+
+run_end_note "$init"$'\n'"$(error_result ',"result":"an early error"')"$'\n'"$clean"
 check "the last result line decides" "(no blocked.md)"
 
 run_end_note "$init"$'\n''{"type":"assistant","message":{"content":[{"type":"te'
-check "a transcript cut off mid-line says the agent never finished" "$(stopped "the agent ended with no final result, so a time limit, a crash, or a cancel stopped it")"
+check "a transcript cut off mid-line says the agent never finished" "$(stopped "the agent ended with no final result, so a time limit, a crash, or a cancel stopped it.")"
 
 run_end_note no-transcript
-check "no transcript says the agent never started" "$(stopped "the agent did not start")"
+check "no transcript says the agent never started" "$(stopped "the agent did not start.")"
 
 run_end_note ""
-check "an empty transcript says the agent never started" "$(stopped "the agent did not start")"
+check "an empty transcript says the agent never started" "$(stopped "the agent did not start.")"
 
 run_end_note "$init"$'\n'"$clean"
 check "a clean finish writes nothing" "(no blocked.md)"
@@ -69,6 +71,6 @@ run_end_note "$init"$'\n'"$max_turns" 'echo "Factory worker blocked: the test ne
 check "an agent's own blocked note is kept" "Factory worker blocked: the test needs a service."
 
 long=$(printf 'y%.0s' {1..400})
-run_end_note "$init"$'\n'"$(result ",\"result\":\"$long\"")"
-check "a long message keeps its first 300 characters" "$(stopped "the agent ended with an error: $(printf 'y%.0s' {1..300})")"
+run_end_note "$init"$'\n'"$(error_result ",\"result\":\"$long\"")"
+check "a long message keeps its first 300 characters" "$(stopped "the agent ended with an error: $(printf 'y%.0s' {1..300}).")"
 exit "$fails"
