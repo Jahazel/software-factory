@@ -63,16 +63,22 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # Outside the project checkout, so a worker cannot commit factory files by mistake.
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Check for a personal GitHub token
+        run: |
+          source "$RUNNER_TEMP/factory/scripts/lib.sh"
+          leaked=$(env -0 | leaked_token_names)
+          [ -z "$leaked" ] || { echo "::error::A personal GitHub token reached the work job's environment in $leaked. No setup or agent step ran."; exit 1; }
+
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
 
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code
-
-      # Outside the project checkout, so a worker cannot commit factory files by mistake.
-      - name: Get factory files
-        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
 
       - name: Install pstack and skills
         run: bash "$RUNNER_TEMP/factory/scripts/install-claude.sh"
