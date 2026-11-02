@@ -18,7 +18,7 @@ check "the first token check has no condition and nothing else in it" '[ "$(step
 check "the first token check runs before any setup" 'job worker.yml work | grep -E "Check for a personal GitHub token|setup-node|npm install" | head -1 | grep -q "Check for a personal"'
 check "the agent step checks for a personal token on the line right before claude -p" \
   'step "Work the issue" | grep -B1 -A1 "^          fail_on_leaked_token \"the agent step\"$" | sed -n "1p;3p" | tr -d " " | paste -sd" " - | grep -q "^source\"\$RUNNER_TEMP/factory/scripts/lib.sh\" claude-p"'
-check "the agent step runs in bash, so no defaults block can switch off its token check" 'step "Work the issue" | sed -n 3p | grep -qx "        shell: bash -e {0}"'
+check "the agent step runs in bash, so no defaults block can switch off its token check" '[ "$(step "Work the issue" | grep -E "^ +shell:")" = "        shell: bash -e {0}" ]'
 check "no work job step may fail and go on" '! job worker.yml work | grep -q continue-on-error'
 check "the work job keeps no git credentials" 'job worker.yml work | grep -q "persist-credentials: false"'
 check "the work job cannot write to GitHub" '! job worker.yml work | grep -qE ": write"'
