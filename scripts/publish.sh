@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # Usage: publish.sh <outbox>   Needs GH_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER,
 # GITHUB_RUN_ID, ISSUE, MODE (new or resolve), BRANCH, PROMPT, RUN_URL.
-# Outbox files: head.bundle (from pack-outbox.sh), pr.md (title line, blank line, body), draft
-# (opens the PR as a draft), follow-ups.md (one ready-for-human issue for the PR's Open items),
-# comments/*.md, blocked.md; the gardener also writes issues/*.md ("title: ..." and "labels: ..."
-# lines, a blank line, the body), report.md, and close.
+# Outbox files: head.bundle (from pack-outbox.sh), pr.md (title line, blank line, body), evidence/
+# (images and videos the PR attaches), draft (opens the PR as a draft), follow-ups.md (one
+# ready-for-human issue for the PR's Open items), comments/*.md, blocked.md; the gardener also
+# writes issues/*.md ("title: ..." and "labels: ..." lines, a blank line, the body), report.md,
+# and close.
 # Exit 0 after a refusal: it blocks the issue or PR. Exit 1 when GitHub fails: settle then blocks.
+# When gh opens the PR with evidence attached but then reports an error, publish notes it on the PR
+# and goes on.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 repo="$GITHUB_REPOSITORY"
 max_bytes=60000
 gardener_labels="gardening:refactor-idea gardening:cleanup"
+partial_upload=2
 
 text_refusal() {
   local f
@@ -84,19 +88,30 @@ fetch_and_check_branch() {
   fi
 }
 
-# Prints the number of the open PR on BRANCH, after it opens one when none is open.
+# Prints the number of the open PR on BRANCH, after it opens one when none is open, with the
+# outbox's evidence files attached.
 open_pr() {
-  local pr_file="$1" draft="$2" body existing url
+  local outbox="$1" draft="$2" stage body existing url f attach=() status=0
   existing=$(gh pr list --repo "$repo" --head "$BRANCH" --state open --json number --jq '.[0].number // ""') || return 1
   [ -z "$existing" ] || { echo "$existing"; return 0; }
-  body=$(mktemp)
-  tail -n +3 "$pr_file" >"$body"
+  stage=$(mktemp -d)
+  body="$stage/body.md"
+  tail -n +3 "$outbox/pr.md" >"$body"
   # Not grep -q: its early exit fails the pipe under pipefail and adds a second Closes line.
   closing_refs <"$body" | grep -x "$ISSUE" >/dev/null || printf '\nCloses #%s\n' "$ISSUE" >>"$body"
-  url=$(gh pr create --repo "$repo" --base main --head "$BRANCH" ${draft:+--draft} \
-    --title "$(head -1 "$pr_file" | sed -E 's/^#+ *//')" --body-file "$body") || return 1
+  for f in "$outbox"/evidence/*; do
+    [ -f "$f" ] || continue
+    cp "$f" "$stage/"
+    attach+=(--attach "$stage/${f##*/}")
+  done
+  # gh 2.102 matches a ./name reference to an --attach file only in its current folder.
+  url=$(cd "$stage" && gh pr create --repo "$repo" --base main --head "$BRANCH" ${draft:+--draft} \
+    --title "$(head -1 "$outbox/pr.md" | sed -E 's/^#+ *//')" ${attach[@]+"${attach[@]}"} --body-file "$body") || status=$?
   [[ "$url" =~ /pull/([0-9]+)$ ]] || { echo "gh pr create printed no PR URL: $url" >&2; return 1; }
   echo "${BASH_REMATCH[1]}"
+  [ "$status" = 0 ] && return 0
+  [ "${#attach[@]}" -gt 0 ] && return "$partial_upload"
+  return 1
 }
 
 file_follow_ups() {
@@ -161,6 +176,8 @@ if [ -f "$outbox/pr.md" ]; then
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
   reason=$(pr_body_refusal "$outbox")
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
+  reason=$(evidence_refusal "$outbox")
+  [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi
 if [ -f "$outbox/head.bundle" ]; then
   git clone --quiet --filter=blob:none --no-checkout "${PUBLISH_REMOTE:-https://github.com/$repo}" "$work"
@@ -174,7 +191,9 @@ if [ -f "$outbox/head.bundle" ]; then
   echo "Pushed $BRANCH."
 fi
 if [ -f "$outbox/pr.md" ]; then
-  pr=$(open_pr "$outbox/pr.md" "$([ ! -e "$outbox/draft" ] || echo draft)") || exit 1
+  open_status=0
+  pr=$(open_pr "$outbox" "$([ ! -e "$outbox/draft" ] || echo draft)") || open_status=$?
+  [ "$open_status" = 0 ] || [ "$open_status" = "$partial_upload" ] || exit 1
   echo "PR #$pr is open."
   reason=$(linked_issues | closing_refusal "GitHub says the PR") || exit 1
   if [ -n "$reason" ]; then
@@ -182,6 +201,11 @@ if [ -f "$outbox/pr.md" ]; then
     refuse_and_exit "$target" "$reason; the PR is closed"
   fi
   [ ! -f "$outbox/follow-ups.md" ] || file_follow_ups "$pr" "$outbox/follow-ups.md" || exit 1
+  if [ "$open_status" = "$partial_upload" ]; then
+    note=$(mktemp)
+    echo "Factory publish: gh reported an error after it opened this PR, so some evidence images may be missing. Attach them with \`gh pr edit --attach\` from the run's outbox artifact. Run: $RUN_URL" >"$note"
+    post_once "$pr" "$note" || exit 1
+  fi
 fi
 if [ "$PROMPT" = gardener.md ]; then
   for f in "$outbox"/issues/*.md; do [ ! -f "$f" ] || create_issue "$f"; done

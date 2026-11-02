@@ -16,7 +16,18 @@ case "$*" in
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
   "issue list "*) echo "${ISSUES:-[]}" ;;
-  "pr create"*) sed 's/^/  body: /' "${@: -1}" >> "$GH_LOG"; echo "https://github.com/o/r/pull/50" ;;
+  "pr create"*)
+    body=$(sed -n 's/.*--body-file \([^ ]*\).*/\1/p' <<<"$*")
+    sed 's/^/  body: /' "$body" >> "$GH_LOG"
+    while [ $# -gt 0 ]; do
+      if [ "$1" = --attach ]; then
+        if [ -f "$2" ] && [ "${2%/*}" = "$PWD" ]; then echo "  attach: ${2##*/}" >> "$GH_LOG"; else echo "  attach-bad: $2" >> "$GH_LOG"; fi
+        shift
+      fi
+      shift
+    done
+    echo "https://github.com/o/r/pull/50"
+    exit "${ATTACH_EXIT:-0}" ;;
 esac
 EOF
 chmod +x "$work/bin/gh"
@@ -147,11 +158,47 @@ run
 second=0; OPEN_PR=50 run || second=$?
 check "a second run with the PR open succeeds and opens no second PR" '[ "$second" = 0 ] && ! grep -q "pr create" "$GH_LOG" && grep -q "Published" "$work/run.log"'
 
+png() { printf '\x89PNG\r\n\x1a\n\0\0\0\rIHDR' >"$work/out/evidence/$1"; }
+fresh 'echo j > app.txt'
+mkdir "$work/out/evidence"; png saved.png; png empty.png
+write_pr $'\n![The saved form](./saved.png)\n![The empty form](./empty.png)\n'
+run
+check "evidence files are attached from gh's current folder, one --attach each" '[ "$(grep -c "  attach: " "$GH_LOG")" = 2 ] && grep -q "  attach: saved.png" "$GH_LOG" && grep -q "  attach: empty.png" "$GH_LOG" && ! grep -q "attach-bad" "$GH_LOG"'
+check "the body keeps its ./name references for gh to rewrite" 'grep -q "body: !\[The saved form\](./saved.png)" "$GH_LOG"'
+
+fresh 'echo k > app.txt'
+run
+check "an outbox with no evidence folder opens the PR with no --attach" 'grep -q "pr create" "$GH_LOG" && ! grep -q -- "--attach" "$GH_LOG"'
+
+fresh 'echo l > app.txt'
+mkdir "$work/out/evidence"; printf 'not a picture' >"$work/out/evidence/saved.png"
+write_pr $'\n![The saved form](./saved.png)\n'
+run
+check "a bad evidence file blocks the issue with the reason, before the push" 'grep -q "Factory publish refused: evidence/saved.png is not a png file" "$GH_LOG" && grep -q "issues/12/labels -f labels\[\]=agent:blocked" "$GH_LOG" && ! remote_has "$branch" && ! grep -q "pr create" "$GH_LOG"'
+
+fresh 'echo m > app.txt'
+mkdir "$work/out/evidence"; png saved.png
+write_pr $'\n![The saved form](./saved.png)\n'
+printf -- '- A loose end.\n' > "$work/out/follow-ups.md"
+partial=0; ATTACH_EXIT=1 run || partial=$?
+check "a partial upload keeps the PR, notes it on the PR, and blocks nothing" '[ "$partial" = 0 ] && grep -q "PR #50 is open" "$work/run.log" && grep -q "issues/50/comments -f body=Factory publish: gh reported an error after it opened this PR" "$GH_LOG" && ! grep -q "labels\[\]=agent:blocked" "$GH_LOG" && grep -q "issue create" "$GH_LOG"'
+
+fresh 'echo o > app.txt'
+failed=0; ATTACH_EXIT=1 run || failed=$?
+check "a failed gh pr create with no evidence still exits 1" '[ "$failed" = 1 ] && ! grep -q "after it opened this PR" "$GH_LOG"'
+
 git -C "$work/origin.git" update-ref -d "refs/heads/$branch"
 outbox 'echo f > app.txt'
 rm "$work/out/pr.md"; printf 'Factory worker blocked: the test needs a service.\n' > "$work/out/blocked.md"
 run
 check "a blocked worker with commits pushes them and blocks the issue" 'remote_has "$branch" && grep -q "labels\[\]=agent:blocked" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+
+git -C "$work/origin.git" update-ref -d "refs/heads/$branch"
+outbox 'echo n > app.txt'
+rm "$work/out/pr.md"; printf 'Factory worker blocked: no service.\n' > "$work/out/blocked.md"
+mkdir "$work/out/evidence"; printf 'not a picture' >"$work/out/evidence/x.png"
+run
+check "a blocked worker's evidence folder is ignored" 'grep -q "body=Factory worker blocked: no service." "$GH_LOG" && ! grep -q "refused" "$GH_LOG"'
 
 git -C "$work/agent" switch --quiet --detach origin/main
 git -C "$work/agent" branch --quiet -f "$branch" origin/main
