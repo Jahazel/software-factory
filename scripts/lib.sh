@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Rules that the orchestrator, the settle job, prepare-issue, publish, and check-pr share. Source this file; it runs nothing.
+# Rules that the orchestrator, the settle job, prepare-issue, publish, check-pr, and the worker job share. Source this file; it runs nothing.
 # Its GitHub rules need GH_TOKEN and GITHUB_REPOSITORY.
 publish_marker="<!-- factory-publish -->"
 closed_pr_lookback=200
+retry_hint="To retry, remove \`agent:blocked\`."
 
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
 # by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
@@ -268,7 +269,7 @@ block_issue() {
   if ! grep -qxF "$2" <<<"$comments"; then
     gh api "repos/$GITHUB_REPOSITORY/issues/$1/comments" -f body="$2
 
-To retry, remove \`agent:blocked\`." >/dev/null || return 1
+$retry_hint" >/dev/null || return 1
   fi
   gh api "repos/$GITHUB_REPOSITORY/issues/$1/labels" -f 'labels[]=agent:blocked' >/dev/null
 }
@@ -291,6 +292,24 @@ settle_issue() {
     echo "#$n: worker failed; added agent:blocked"
   fi
   gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label agent:in-progress >/dev/null
+}
+
+write_end_note() {
+  local outbox="$1" transcript="$2" run_url="$3" note f
+  for f in pr.md blocked.md; do [ ! -e "$outbox/$f" ] && [ ! -L "$outbox/$f" ] || return 0; done
+  [ -f "$transcript" ] || transcript=/dev/null
+  note=$(jq -nrR '[inputs | fromjson? | select(type == "object")] as $lines
+    | ($lines | map(select(.type == "result")) | last) as $r
+    | if ($lines | length) == 0 then "the agent did not start"
+      elif $r == null then "the agent ended with no final result, so a time limit, a crash, or a cancel stopped it"
+      elif $r.is_error != true then empty
+      else "the agent ended with an error"
+        + (if ($r.subtype // "success") == "success" then "" else " (\($r.subtype))" end)
+        + (($r.result // ($r.errors // [] | join("; "))) | tostring | split("\n")[0] // "" | .[:300] | sub("\\s+$"; "")
+           | if . == "" then "" else ": \(.)" end)
+      end
+    | if test("[.!?]$") then . else "\(.)." end' <"$transcript")
+  [ -z "$note" ] || printf 'Factory worker stopped: %s Run: %s\n\n%s\n' "$note" "$run_url" "$retry_hint" >"$outbox/blocked.md"
 }
 
 pr_lead_headings=("Decisions to confirm" "Review not finished")
