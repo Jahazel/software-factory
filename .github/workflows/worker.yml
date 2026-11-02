@@ -63,16 +63,22 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # Outside the project checkout, so a worker cannot commit factory files by mistake.
+      - name: Get factory files
+        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
+
+      - name: Check for a personal GitHub token
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/factory/scripts/lib.sh"
+          fail_on_leaked_token "the work job, before setup"
+
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
 
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code
-
-      # Outside the project checkout, so a worker cannot commit factory files by mistake.
-      - name: Get factory files
-        run: git clone --quiet --depth 1 https://github.com/Jahazel/software-factory "$RUNNER_TEMP/factory"
 
       - name: Install pstack and skills
         run: bash "$RUNNER_TEMP/factory/scripts/install-claude.sh"
@@ -158,6 +164,7 @@ jobs:
 
       - name: Work the issue
         if: inputs.issue != '0'
+        shell: bash -e {0}
         working-directory: ${{ steps.prepare.outputs.worktree }}
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -177,6 +184,8 @@ jobs:
               -e "s|{{OUTBOX}}|$RUNNER_TEMP/outbox|g" \
               "$prompts/$PROMPT" > "$dir/prompt.md"
           { echo; echo "## Project rules"; echo; cat "${{ inputs.rules }}"; } >> "$dir/prompt.md"
+          source "$RUNNER_TEMP/factory/scripts/lib.sh"
+          fail_on_leaked_token "the agent step"
           claude -p --model claude-opus-5-5 --effort medium --dangerously-skip-permissions \
             --output-format stream-json --verbose < "$dir/prompt.md" \
             | tee "$dir/transcript.jsonl" \
