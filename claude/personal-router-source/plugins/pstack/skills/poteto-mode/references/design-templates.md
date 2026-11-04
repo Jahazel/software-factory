@@ -27,10 +27,13 @@ Real data shapes the layout must hold, such as one item, many items, or a partia
 What this design leaves for later, and why.
 
 ## Open questions
-Numbered. The research step answers each one.
+Numbered. Answer each one with the user before or during the section it affects.
 
-## Directions
-The three directions shown, with one line each, and the one the user picked.
+## Sections
+In build order. Fill a row when the user approves the section.
+
+| Section | Picked variant | Axis | User's reason |
+| --- | --- | --- | --- |
 ```
 
 ## motion.md
