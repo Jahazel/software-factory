@@ -21,4 +21,8 @@ check "http and www links to this repo" "Closes http://github.com/o/r/issues/1, 
 check "a GH- reference" "Fixes GH-13" "13"
 check "a byte that is not UTF-8 hides nothing" $'\xff Closes #13 \xff' "13"
 check "a keyword with words between it and a number" "Closes the bug in #13" ""
+check "a keyword inside a longer word" 'call `onClose`. #611, disclosed #3, prefixes #4' ""
+check "a sentence that ends in a keyword" "Tap X to close. #611 adds the guide." ""
+check "a code span after a keyword" 'Then call `close`. #9 needs it.' ""
+check "a keyword after other punctuation" "(Closes #5) and -fixes #6" "5|6"
 exit "$fails"
