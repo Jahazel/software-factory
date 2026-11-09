@@ -21,7 +21,7 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `prompts/gardener.md` | The gardener prompt: read the merged PRs and their `Review findings`, block the worst repeated pattern in at most one PR, file up to three refactor ideas, and write the report. |
 | `tests/` | Plain bash tests for the pure rules. Run `for t in tests/*.sh; do bash "$t"; done`. |
 | `claude/` | A copy of pstack, the router hook, the model rules, and the owner's skills, including shared `worktree` setup, laid out like `~/.claude`. |
-| `scripts/sync-claude.sh` | Run on the owner's Mac to refresh `claude/` from `~/.claude`. |
+| `scripts/sync-claude.sh` | Run on the owner's Mac to refresh `claude/` (skills, agents, pstack, and model rules) from `~/.claude`. |
 | `scripts/install-claude.sh` | Runs on the job computer. Installs `claude/` into `~/.claude`, adds third-party skills, and turns pstack on. |
 
 ## Factory PRs and stops
