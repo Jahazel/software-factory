@@ -12,4 +12,4 @@ Run `code-review` as the installed skill describes. `architect` and `arena` use 
 
 Session startup supplies the router instruction separately. This file does not register a skill, enable a hook, or change a running session's settings.
 
-On Claude Code 2.1.300, pass explicit model and effort on each non-fork helper invocation. Confirm the Agent tool schema in that session. If it rejects the exact Opus ID, do not silently use an alias without checking its actual model. CLAUDE_CODE_EFFORT_LEVEL can override per-call effort. Keep Codex-only model instructions out of Claude selection even when shared instructions include them.
+Pass explicit model and effort on each non-fork helper invocation. Confirm the Agent tool schema in that session. If it rejects the exact Opus ID, do not silently use an alias without checking its actual model. CLAUDE_CODE_EFFORT_LEVEL can override per-call effort.
