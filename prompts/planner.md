@@ -12,6 +12,11 @@ Hold a candidate when its work will likely change a file that a busy item change
 an older candidate you do not hold will change. Use the issue text and the tree to tell which files
 an issue changes. Name only files you expect both sides to change.
 
+A shared file need not exist on main yet. When both sides call the same outside service, such as a
+payment provider, and the tree has no module for those calls, each side will create that module.
+This is a likely overlap, not an unsure one: hold the candidate, and name the module at the path the
+tree's layout suggests.
+
 When you are not sure, do not hold. A wrong hold delays an issue; a missed overlap costs only a
 merge conflict that the factory handles later.
 
