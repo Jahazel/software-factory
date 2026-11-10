@@ -25,7 +25,7 @@ fi
   jq -r --arg owner "$owner" --arg marker "$publish_marker" '.comments[] | select(.author.login == $owner and (.body | contains($marker) | not))
     | "\n## \(.createdAt)\n\n\(.body)"' <<<"$json"
   jq -r --arg owner "$owner" --arg marker "$publish_marker" '[.comments[] | select(.author.login == $owner
-      and (.body | contains($marker)) and (.body | startswith("Factory worker blocked:")))] | last // empty
+      and (.body | contains($marker)) and (.body | test("^Factory (worker (blocked|stopped)|publish refused):")))] | last // empty
     | "\n# The latest blocked comment from the factory\n\nAn earlier factory run wrote this when it stopped.\n\n## \(.createdAt)\n\n\(.body)"' <<<"$json"
 } > "$out"
 
