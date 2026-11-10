@@ -34,6 +34,17 @@ When the owner closes a factory PR without merging it, the next run adds `agent:
 comment `Factory stopped: PR #<p> was closed without merge.` and starts no worker. To retry any
 blocked issue, the owner removes `agent:blocked`.
 
+## Owner comments and project rules
+
+The owner can widen the project rules for one issue with a comment on it, for example: "You may
+resolve merge conflicts in these three files." The worker and resolve prompts use this order: an
+owner comment wins over the project rules for that issue only, and the project rules win over the
+prompt. Only the owner's comments count; the factory drops other comments before the agent runs.
+A comment cannot lift the publish job's refusals: changes under `.github/`, symbolic links,
+submodules, and a PR that closes another issue stay refused.
+The comment acts inside the agent's run only. The orchestrator still uses `AGENT_CONFLICTS` to
+decide which open factory PRs get a resolve job.
+
 ## Moving a caller to this version
 
 The caller workflows call this repo `@main`, and `trigger-label` has no default. A caller that does
