@@ -274,6 +274,14 @@ bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$old" "origin/$ol
 cont
 check "a continue run whose branch is gone locally is refused" 'grep -q "Factory publish refused: the PR has no commits" "$GH_LOG"'
 
+for leftover in 'echo s > app.txt' 'echo t > new.txt' 'git switch --quiet --detach && echo u > app.txt && git commit --quiet -am detached'; do
+  seed_old; continued ''
+  (cd "$work/agent" && eval "$leftover")
+  bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$old" "origin/$old" >/dev/null
+  cont
+  check "a continue run that left work off the branch ($leftover) is refused" 'grep -q "Factory publish refused: the PR has no commits" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+done
+
 seed_old; before=$(tip "$old"); continued ''
 rm "$work/out/pr.md"; printf 'Factory worker blocked: still no service.\n' > "$work/out/blocked.md"
 cont
