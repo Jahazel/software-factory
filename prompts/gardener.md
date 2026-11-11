@@ -82,6 +82,8 @@ With a change, merge the newest main first:
 
 {{MERGE_MAIN}}
 
+When the review round of step 6 of these steps finds a serious defect, fix it when the fix is clear and run the checks again. Otherwise, or when the round does not complete, block.
+
 Then:
 
 1. Follow the Opening a PR playbook to write the PR title and body, with one change: do not push, and do not open the PR yourself. Commit all work on `{{BRANCH}}`. Write `{{OUTBOX}}/pr.md`: line 1 is the title `refactor(gardening): <the pattern> (<date>)`, line 2 is empty, and the body follows. The body uses these `##` headings and no others, in this order: the `pr` skill's `Problem`, `Summary`, `Evidence`, and `Merge Danger`, then `Decisions`, `Test seams`, `Review findings`, and `Open items` when they apply. Put any other section under one of them as a `###` heading. Change nothing under `.github/`; the factory refuses to push it.

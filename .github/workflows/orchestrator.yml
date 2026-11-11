@@ -19,7 +19,7 @@ on:
         type: boolean
         default: true
       agent-conflicts:
-        description: Path prefixes, space-separated, where a merge conflict goes to a worker; any other conflict blocks the PR
+        description: Migration folders, space-separated path prefixes, checked for repeated migration numbers; the planner ignores overlaps there. Every merge conflict goes to a resolve worker
         type: string
         default: ""
     secrets:

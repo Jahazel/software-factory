@@ -5,8 +5,8 @@
 # but runs no step.
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
 # GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, TRIGGER_LABEL, CAP, DRY_RUN, AGENT_CONFLICTS
-# (space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
-# GITHUB_OUTPUT. A job's mode says its kind: {"issue":n,"mode":"new","branch":""} for new work from
+# (the migration folders, space-separated path prefixes, may be empty). Writes jobs=<JSON array of
+# claimed jobs> to GITHUB_OUTPUT. A job's mode says its kind: {"issue":n,"mode":"new","branch":""} for new work from
 # main, {"issue":n,"mode":"continue","branch":b} to finish the pushed factory branch b of an earlier
 # run, or {"issue":n,"mode":"resolve","branch":b,"pr":p,"main":sha} for a resolve worker that merges
 # main into the open PR p on branch b.
@@ -54,25 +54,9 @@ merge_main() {
     | awk 'NR == 1 { print $2 }' || true
 }
 
-# Prints the paths that conflict when main merges into branch $1. Read only: never pushes.
-# Reuses one clone per run.
-conflict_paths() {
-  local dir="${RUNNER_TEMP:-/tmp}/caller"
-  [ -d "$dir" ] || git clone --quiet --filter=blob:none "https://github.com/$repo" "$dir" || return 1
-  git -C "$dir" fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" "+refs/heads/$1:refs/remotes/origin/$1" || return 1
-  git -C "$dir" checkout --quiet --detach "origin/$1" || return 1
-  git -C "$dir" -c user.name=factory -c user.email=factory@invalid merge --quiet --no-commit --no-ff origin/main >/dev/null 2>&1 || true
-  git -C "$dir" diff --name-only --diff-filter=U
-  git -C "$dir" merge --abort 2>/dev/null || git -C "$dir" reset --quiet --hard
-}
-
 # Brings each factory PR up to date with main, so its strict required checks can pass again.
-# A PR whose issue a worker has is left alone. A conflict only under AGENT_CONFLICTS, or a repeated
-# migration number there, gets a resolve job on fd 3 while places are free; any other conflict
-# blocks the PR for the owner. A failed GitHub call is logged for that PR and never stops the run,
-# so the issues are still picked.
 refresh() {
-  local prs pr issue branch blocked worker status paths shown repeated main free=$(( CAP - running ))
+  local prs pr issue branch blocked worker status repeated main free=$(( CAP - running ))
   # Resolve jobs name this main, so settle can check that the worker merged it.
   if ! main=$(gh api "repos/$repo/commits/main" --jq .sha); then
     decide "PRs" error "main could not be read; the next run retries"
@@ -115,22 +99,7 @@ refresh() {
         repeated=$(repeated_migrations "$branch") || { repeated=""; decide "PR #$pr" error "the folders in $AGENT_CONFLICTS could not be read; repeated migration numbers not checked"; }
         [ -z "$repeated" ] || resolve_job "$pr" "repeated migration number in $repeated"
         ;;
-      409)
-        if ! paths=$(conflict_paths "$branch") || [ -z "$paths" ]; then
-          decide "PR #$pr" error "merges API returned 409, but the conflicting paths could not be listed; the next run retries"
-          continue
-        fi
-        shown=$(head -3 <<<"$paths" | paste -sd, - | sed 's/,/, /g')
-        if [ "$(classify_conflict <<<"$paths")" = agent ]; then
-          resolve_job "$pr" "conflict only in $AGENT_CONFLICTS: $shown"
-        else
-          if block_pr "$pr" "Factory refresh blocked: merging main into this branch conflicts in $(paste -sd, - <<<"$paths" | sed 's/,/, /g')."; then
-            decide "PR #$pr" blocked "conflict in $shown; the owner merges main by hand"
-          else
-            decide "PR #$pr" error "conflict in $shown, but the PR could not be blocked; the next run retries"
-          fi
-        fi
-        ;;
+      409) resolve_job "$pr" "merging main conflicts" ;;
       *) decide "PR #$pr" error "merges API returned ${status:-no status}; the next run retries" ;;
     esac
   done <<<"$prs"
