@@ -10,8 +10,10 @@ if ! head=$(git -C "$worktree" rev-parse --verify --quiet "refs/heads/$branch");
   echo "Branch $branch is gone; nothing to pack."; exit 0
 fi
 if [ "$(git -C "$worktree" rev-list --count "$base..$head")" = 0 ]; then
-  if [ "$(git -C "$worktree" rev-parse HEAD)" = "$head" ] && [ -z "$(git -C "$worktree" status --porcelain)" ]; then
+  if [ "$(git -C "$worktree" rev-parse HEAD)" = "$head" ] && left=$(git -C "$worktree" status --porcelain) && [ -z "$left" ]; then
     touch "$outbox/no-commits"
+  else
+    echo "::warning::The worktree is not on $branch or holds uncommitted changes, so publish opens no PR from the pushed head."
   fi
   echo "Branch $branch has no commits past $base; nothing to pack."; exit 0
 fi
