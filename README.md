@@ -9,9 +9,10 @@ Reusable GitHub Actions software factory: label-triggered agent workers
 | `scripts/settle.sh` | Checks each resolve job's PR, releases each claim after the workers end, then starts the orchestrator again. |
 | `scripts/lib.sh` | Rules the orchestrator, settle, publish, and the worker job share: skip rules, the closed-PR stop, issue briefs, factory branches and PRs, open PR check, conflict classes, planner answer checks and plan decisions, the PR heading rule, repeated migration numbers, paths the factory never pushes, issue and PR blocks, resolve checks, claim release, the note on why an agent stopped, and the personal-token check, which runs before setup and again before the agent starts. |
 | `prompts/worker.md` | The worker prompt. The project adds its own rules file. |
+| `prompts/start-new.md`, `prompts/start-continue.md` | The worker prompt's line on where its branch came from: new work from main, or an earlier run's pushed work to finish. |
 | `prompts/resolve.md` | The resolve worker prompt: merge main into an open factory PR, and fix a conflict or repeated migration number the project rules allow. |
 | `scripts/pack-outbox.sh` | Runs in the work job after the agent. Adds the branch's new commits to the agent's outbox as a git bundle. |
-| `scripts/publish.sh` | Runs in the publish job. Checks the outbox as untrusted data, then pushes the branch, opens the PR (as a draft when the outbox asks) with the outbox's `evidence/` images attached, files the follow-ups issue, and posts comments and blocks. It refuses changes under `.github/`, symbolic links, submodules, a PR that closes another issue, a PR body whose `##` headings break the `pr` skill's order, and a push that is not this run's branch. It also refuses an `evidence/` folder that breaks the evidence check below. |
+| `scripts/publish.sh` | Runs in the publish job. Checks the outbox as untrusted data, then pushes the branch, opens the PR (as a draft when the outbox asks) with the outbox's `evidence/` images attached, files the follow-ups issue, and posts comments and blocks. It refuses changes under `.github/`, symbolic links, submodules, a PR that closes another issue, a PR body whose `##` headings break the `pr` skill's order, and a push that is not this run's branch or, on a retry, does not build on the earlier run's pushed head. It also refuses an `evidence/` folder that breaks the evidence check below. |
 | `scripts/check-pr.sh` | The agent runs it on its outbox before it stops. It runs publish's PR heading and evidence checks and prints the reason publish would refuse, or that `pr.md` is missing. The evidence check allows at most 20 plain files. Each is a `.png`, `.jpg`, `.webp`, or `.webm` under 10 MB whose first bytes match its name, and whose name starts with a letter or digit and uses only letters, digits, `.`, `_`, and `-`. Each file needs one `![alt](./name)` image in `pr.md`, and each such image needs a file. The worker job passes its path as `FACTORY_PR_CHECK`. The rule reads `##` headings only: a heading written as underlined text or as HTML is not checked. |
 | `prompts/planner.md`, `prompts/planner.schema.json` | The planner prompt and its answer shape: which candidate issues to hold because they would change the same files as work in flight. |
 | `prompts/merge-main.md` | The "Merge the newest main" steps that both prompts include. |
@@ -33,6 +34,15 @@ owner branch with an open PR still makes the orchestrator skip its issue.
 When the owner closes a factory PR without merging it, the next run adds `agent:blocked` with the
 comment `Factory stopped: PR #<p> was closed without merge.` and starts no worker. To retry any
 blocked issue, the owner removes `agent:blocked`.
+
+A worker that blocks still pushes its commits, so a blocked issue can have a pushed factory branch and
+no PR. On a retry, the orchestrator takes the issue's newest factory branch, the one with the highest
+run number. If no PR ever used that branch, the worker continues it: it starts from those commits,
+merges the newest main, runs the checks and code review again, and opens the PR from that branch.
+Publish pushes only a head that builds on the pushed one. If the newest branch had a PR that merged
+or that the owner closed, or the issue has no factory branch, the worker starts new work from main.
+So after a closed PR, the retry never reuses that work or an older branch. If GitHub cannot list the
+branches, the orchestrator starts nothing for the issue, and the next run tries again.
 
 ## Owner comments and project rules
 

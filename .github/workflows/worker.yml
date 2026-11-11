@@ -25,12 +25,16 @@ on:
         description: Issue number to work; 0 runs the proof only
         type: string
         default: "0"
+      mode:
+        description: new (a fresh branch off main), continue (finish the pushed factory branch in branch and open its PR), or resolve (merge main into the open PR on branch)
+        type: string
+        default: new
       branch:
-        description: Open PR branch to bring up to date with main; empty starts new work from main
+        description: The existing factory branch for mode continue or resolve; empty for new
         type: string
         default: ""
       prompt:
-        description: Prompt file in prompts/ for the issue run; empty picks worker.md, or resolve.md when branch is set
+        description: Prompt file in prompts/ for the issue run; empty picks resolve.md for mode resolve, else worker.md
         type: string
         default: ""
       node-version:
@@ -144,6 +148,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -f "${{ inputs.rules }}" || { echo "Issue runs need the project rules file (the rules input)."; exit 1; }
+          case "${{ inputs.mode }}/${{ inputs.branch }}" in
+            new/|continue/?*|resolve/?*) ;;
+            *) echo "Mode ${{ inputs.mode }} does not fit branch '${{ inputs.branch }}'."; exit 1 ;;
+          esac
           git config user.name "software-factory worker"
           git config user.email "72827154+Jahazel@users.noreply.github.com"
           mkdir -p "$RUNNER_TEMP/worker" "$RUNNER_TEMP/outbox"
@@ -174,15 +182,17 @@ jobs:
           FACTORY_REVIEW_RUNNER: ${{ runner.temp }}/factory/scripts/review.py
           FACTORY_REVIEW_DIR: ${{ runner.temp }}/worker/reviews
           FACTORY_PR_CHECK: ${{ runner.temp }}/factory/scripts/check-pr.sh
-          PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.branch == '' && 'worker.md' || 'resolve.md') }}
+          PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.mode == 'resolve' && 'resolve.md' || 'worker.md') }}
+          MODE: ${{ inputs.mode }}
         run: |
           dir="$RUNNER_TEMP/worker"
           prompts="$RUNNER_TEMP/factory/prompts"
+          # Two passes: sed's r inserts text that the s commands of the same pass never see.
           sed -e "/{{MERGE_MAIN}}/{r $prompts/merge-main.md" -e "d;}" \
-              -e "s|{{ISSUE}}|$ISSUE|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
+              -e "/{{START}}/{r $prompts/start-$MODE.md" -e "d;}" "$prompts/$PROMPT" \
+            | sed -e "s|{{ISSUE}}|$ISSUE|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
               -e "s|{{BRANCH}}|$BRANCH|g" -e "s|{{ISSUE_FILE}}|$dir/issue.md|g" \
-              -e "s|{{OUTBOX}}|$RUNNER_TEMP/outbox|g" \
-              "$prompts/$PROMPT" > "$dir/prompt.md"
+              -e "s|{{OUTBOX}}|$RUNNER_TEMP/outbox|g" > "$dir/prompt.md"
           { echo; echo "## Project rules"; echo; cat "${{ inputs.rules }}"; } >> "$dir/prompt.md"
           source "$RUNNER_TEMP/factory/scripts/lib.sh"
           fail_on_leaked_token "the agent step"
@@ -192,7 +202,7 @@ jobs:
             | jq -r --unbuffered 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text'
 
       - name: Note why the agent stopped
-        if: always() && inputs.branch == '' && inputs.prompt == '' && steps.prepare.outputs.branch != ''
+        if: always() && inputs.mode != 'resolve' && inputs.prompt == '' && steps.prepare.outputs.branch != ''
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -247,9 +257,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           ISSUE: ${{ inputs.issue }}
-          MODE: ${{ inputs.branch == '' && 'new' || 'resolve' }}
+          MODE: ${{ inputs.mode }}
           BRANCH: ${{ inputs.branch != '' && inputs.branch || needs.work.outputs.branch }}
-          PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.branch == '' && 'worker.md' || 'resolve.md') }}
+          PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.mode == 'resolve' && 'resolve.md' || 'worker.md') }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           test -n "$GH_TOKEN" || { echo "Issue runs need the FACTORY_GITHUB_TOKEN secret."; exit 1; }

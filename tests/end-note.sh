@@ -78,7 +78,7 @@ run_end_note "$init"$'\n'"$(error_result ',"result":"Stopped!  "')"
 check "trailing spaces are trimmed, and ! ends the sentence" "$(stopped "the agent ended with an error: Stopped!")"
 
 step_if=$(awk '$0 == "      - name: Note why the agent stopped" { on = 1; next } on && /^        if:/ { print; exit }' "$(dirname "$0")/../.github/workflows/worker.yml")
-if [[ "$step_if" == *"inputs.branch == ''"* && "$step_if" == *"inputs.prompt == ''"* ]]; then
-  echo "ok: the note step runs only for new-issue runs with the default prompt (no resolve, no gardener)"
+if [[ "$step_if" == *"inputs.mode != 'resolve'"* && "$step_if" == *"inputs.prompt == ''"* ]]; then
+  echo "ok: the note step runs only for new and continued issue runs with the default prompt (no resolve, no gardener)"
 else echo "FAIL: the note step's condition lets resolve or gardener runs through: $step_if"; fails=1; fi
 exit "$fails"

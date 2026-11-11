@@ -91,6 +91,7 @@ jobs:
     uses: Jahazel/software-factory/.github/workflows/worker.yml@main
     with:
       issue: ${{ format('{0}', matrix.issue) }}
+      mode: ${{ matrix.mode }}
       branch: ${{ matrix.branch }}
     secrets: inherit
 

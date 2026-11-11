@@ -205,5 +205,66 @@ git -C "$work/agent" branch --quiet -f "$branch" origin/main
 outbox 'echo g > app.txt'
 rm -f "$work/out/pr.md"
 MODE=resolve OPEN_PR=50 BRANCH="$branch" run
-check "a resolve push that drops the PR's commits is refused" 'grep -q "does not build on the PR" "$GH_LOG"'
+check "a resolve push that drops the PR's commits is refused" 'grep -q "does not build on the pushed head of $branch" "$GH_LOG"'
+old=factory/issue-12-add-x-50
+# Pushes $old: main plus one commit that writes $1 (default old), as a run that blocked left it.
+seed_old() {
+  git -C "$work/seed" switch --quiet --detach main
+  echo "${1:-old}" > "$work/seed/old.txt"; git -C "$work/seed" add -A; git -C "$work/seed" commit --quiet -m old
+  git -C "$work/seed" push --quiet --force origin "HEAD:refs/heads/$old"; git -C "$work/seed" switch --quiet main
+}
+# A continue run's outbox: the agent starts from the pushed $old and runs $1 (nothing when empty).
+continued() {
+  rm -rf "$work/out" "$work/tmp" "$work/agent"; mkdir -p "$work/out/comments" "$work/tmp"
+  git clone --quiet "$work/origin.git" "$work/agent"
+  git -C "$work/agent" config user.name agent; git -C "$work/agent" config user.email a@example.invalid
+  git -C "$work/agent" switch --quiet -c "$old" "origin/$old"
+  if [ -n "$1" ]; then
+    (cd "$work/agent" && eval "$1")
+    git -C "$work/agent" add -A; git -C "$work/agent" commit --quiet -m more
+    bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$old" "origin/$old" >/dev/null
+  fi
+  write_pr
+}
+cont() { MODE=continue BRANCH="$old" run; }
+tip() { git -C "$work/origin.git" rev-parse "refs/heads/$1"; }
+
+seed_old; continued 'echo p > app.txt'
+printf 'Factory note.\n' > "$work/out/comments/01.md"
+cont
+check "a continue run pushes onto an earlier run's branch and opens the PR from it" '[ "$(tip "$old")" = "$(git -C "$work/agent" rev-parse HEAD)" ] && grep -q "gh pr create --repo o/r --base main --head $old" "$GH_LOG"'
+check "a continue run posts its comments on the issue" 'grep -q "issues/12/comments -f body=Factory note." "$GH_LOG"'
+
+seed_old; before=$(tip "$old"); continued ''
+cont
+check "a continue run with no new commit opens the PR from the pushed head" '[ "$(tip "$old")" = "$before" ] && grep -q "gh pr create --repo o/r --base main --head $old" "$GH_LOG" && ! grep -q "Pushed" "$work/run.log"'
+
+git -C "$work/seed" push --quiet --force origin "main:refs/heads/$old"; continued ''
+cont
+check "a continued branch with nothing past main is refused" 'grep -q "Factory publish refused: the branch holds no commits past main" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+
+seed_old; continued 'echo q > app.txt'
+seed_old rewritten; moved=$(tip "$old")
+cont
+check "a continue head that drops the pushed commits is refused" 'grep -q "does not build on the pushed head of $old" "$GH_LOG" && [ "$(tip "$old")" = "$moved" ]'
+
+seed_old; continued ''
+git -C "$work/origin.git" update-ref -d "refs/heads/$old"
+cont
+check "a continued branch that is gone is refused" 'grep -q "branch $old is gone from GitHub" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+
+seed_old; continued ''
+MODE=continue BRANCH=factory/issue-13-add-x-50 run
+check "a continue run on another issue's branch is refused" 'grep -q "is not a factory branch of issue #12" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+
+seed_old; continued ''
+git -C "$work/seed" rm --quiet .github/workflows/ci.yml; git -C "$work/seed" commit --quiet -m "drop ci"; git -C "$work/seed" push --quiet origin main
+cont
+check "a pushed head whose .github/ differs from main's is refused" 'grep -q "differs from main" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+git -C "$work/seed" revert --quiet --no-edit HEAD >/dev/null; git -C "$work/seed" push --quiet origin main
+
+seed_old; before=$(tip "$old"); continued ''
+rm "$work/out/pr.md"; printf 'Factory worker blocked: still no service.\n' > "$work/out/blocked.md"
+cont
+check "a continue run that blocks again with no commit only blocks the issue" '[ "$(tip "$old")" = "$before" ] && grep -q "body=Factory worker blocked: still no service." "$GH_LOG" && ! grep -q "refused" "$GH_LOG"'
 exit "$fails"

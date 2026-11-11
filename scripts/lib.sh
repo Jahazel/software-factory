@@ -33,6 +33,30 @@ valid_factory_branch() {
   [ -z "${3:-}" ] || [[ "$1" == *"-$3" ]]
 }
 
+# Reads branch names on stdin. Prints the factory branch of issue $1 with the highest run number,
+# or nothing. Run IDs grow over time, so the highest is the newest.
+newest_factory_branch() {
+  local b
+  while IFS= read -r b; do
+    valid_factory_branch "$b" "$1" && [[ "$b" =~ -([0-9]+)$ ]] && echo "${BASH_REMATCH[1]} $b"
+  done | sort -k1,1n | tail -1 | cut -d' ' -f2-
+}
+
+# Prints the pushed factory branch that a retry of issue $1 continues, or nothing for new work from
+# main: the issue's newest factory branch, when no PR from this repo ever used it. A used branch
+# had a PR that merged or that the owner closed, so its work is not reused, and no older branch is.
+# Returns 1 when GitHub cannot be read.
+continue_branch() {
+  local refs newest used
+  refs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/heads/factory/issue-$1-" \
+    --jq '.[].ref | ltrimstr("refs/heads/")') || return 1
+  newest=$(newest_factory_branch "$1" <<<"$refs")
+  [ -n "$newest" ] || return 0
+  used=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$newest" --state all --limit 200 \
+    --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)] | length') || return 1
+  [ "$used" != 0 ] || echo "$newest"
+}
+
 # Reads one labeled issue's facts as JSON on stdin: owner, author, labeler (who last added the
 # trigger label), labels, sub_issues (count), open_pr, blockers, stopped (stop_reason). Prints why
 # the orchestrator skips the issue, or nothing when it is a candidate.

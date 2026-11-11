@@ -6,9 +6,10 @@
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
 # GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, TRIGGER_LABEL, CAP, DRY_RUN, AGENT_CONFLICTS
 # (space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
-# GITHUB_OUTPUT. A job is {"issue":n,"branch":""} for new work, or
-# {"issue":n,"branch":b,"pr":p,"main":sha} for a resolve worker that merges main into the open PR p
-# on branch b.
+# GITHUB_OUTPUT. A job's mode says its kind: {"issue":n,"mode":"new","branch":""} for new work from
+# main, {"issue":n,"mode":"continue","branch":b} to finish the pushed factory branch b of an earlier
+# run, or {"issue":n,"mode":"resolve","branch":b,"pr":p,"main":sha} for a resolve worker that merges
+# main into the open PR p on branch b.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 prompts="$(dirname "${BASH_SOURCE[0]}")/../prompts"
@@ -86,7 +87,7 @@ refresh() {
       if [ "$DRY_RUN" = true ]; then decide "PR #$1" "would resolve" "$2; a worker would merge main"
       else decide "PR #$1" resolve "$2; a worker merges main"; fi
       jq -cn --argjson issue "$issue" --arg branch "$branch" --argjson pr "$1" --arg main "$main" \
-        '{issue: $issue, branch: $branch, pr: $pr, main: $main}' >&3
+        '{issue: $issue, mode: "resolve", branch: $branch, pr: $pr, main: $main}' >&3
     fi
   }
   if ! prs=$(factory_prs); then
@@ -241,6 +242,24 @@ plan() {
   done <<<"$decisions"
 }
 
+# Reads the issues that start, one per line, and writes one job line each to fd 3: a continue job
+# when an earlier run pushed a factory branch that a retry continues, else new work from main.
+# When the branches cannot be read, it writes no job and the issue stays unclaimed.
+to_jobs() {
+  local n branch
+  while read -r n; do
+    [ -n "$n" ] || continue
+    if ! branch=$(continue_branch "$n"); then
+      decide "#$n" error "its factory branches could not be read; the next run retries"; continue
+    fi
+    if [ -z "$branch" ]; then
+      jq -cn --argjson issue "$n" '{issue: $issue, mode: "new", branch: ""}' >&3; continue
+    fi
+    decide "#$n" "$([ "$DRY_RUN" = true ] && echo "would continue" || echo continue)" "$branch holds an earlier run's work"
+    jq -cn --argjson issue "$n" --arg branch "$branch" '{issue: $issue, mode: "continue", branch: $branch}' >&3
+  done
+}
+
 # Reads job lines. Adds agent:in-progress to each job's issue with github.token, so the label
 # change starts no workflow, and prints the job line. A resolve job claims the issue of its PR.
 claim() {
@@ -257,7 +276,7 @@ sweep
 running=$(gh issue list --repo "$repo" --state open --label agent:in-progress --json number --jq length)
 summary_header
 resolves=$(refresh 3>&1 >&2)
-started=$(pick | plan "$(grep -c . <<<"$resolves" || true)" 3>&1 >&2 | jq -c '{issue: ., branch: ""}')
+started=$(pick | plan "$(grep -c . <<<"$resolves" || true)" 3>&1 >&2 | to_jobs 3>&1 >&2)
 # A dry run counts the places resolve jobs would take, but claims and starts nothing.
 if [ "$DRY_RUN" = true ]; then jobs=""; else jobs=$(printf '%s\n%s\n' "$resolves" "$started" | claim); fi
 echo "jobs=$(jq -sc . <<<"$jobs")" >> "${GITHUB_OUTPUT:-/dev/stdout}"
