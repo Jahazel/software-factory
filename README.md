@@ -52,8 +52,24 @@ owner comment wins over the project rules for that issue only, and the project r
 prompt. Only the owner's comments count; the factory drops other comments before the agent runs.
 A comment cannot lift the publish job's refusals: changes under `.github/`, symbolic links,
 submodules, and a PR that closes another issue stay refused.
-The comment acts inside the agent's run only. The orchestrator still uses `AGENT_CONFLICTS` to
-decide which open factory PRs get a resolve job.
+
+## Merge conflicts
+
+The owner chose this policy on #34. A worker that merges the newest main may resolve a conflict in
+any file, except a path on the deny list. The deny list is in the project rules, for example
+`migrations/`. A conflict on the deny list follows the project's own rule for that path, such as
+renumbering a migration. With no such rule, the worker blocks. An owner comment can add to the
+deny list or give a rule for one issue.
+
+After a resolved conflict, the worker runs every project check again and one full code review round
+before it opens the PR. When the checks fail and the fix is not clear, the worker undoes the merge
+and blocks. The blocked note names each conflicting file and the PR on main that changed it.
+
+When main moves, the orchestrator merges it into each open factory PR. Every conflict gets a resolve
+worker. It follows the same steps, reviews only what the resolution changed, and blocks the PR when
+it cannot finish. `AGENT_CONFLICTS` names the migration folders: the orchestrator checks them for
+repeated migration numbers, and the planner ignores overlaps there. The publish job's refusals stay
+as they are.
 
 ## Moving a caller to this version
 

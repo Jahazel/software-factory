@@ -42,6 +42,10 @@ Never ask a question and never wait for an answer. When a skill tells you to ask
 
 {{MERGE_MAIN}}
 
+## Review a resolved merge
+
+After you resolve a conflict outside the deny list and the checks pass, run one full code review round before you open the PR. Use the factory `code-review` skill on the whole branch diff from the new `git merge-base HEAD origin/main`, and tell both reviewers which files conflicted. Run it as the next round: `initial` when no round ran yet, else `fix`. Handle its findings as "Do the work" step 4 says. When the supervisor refuses the round because no round is left, take the draft PR path and list the merge commit as unreviewed.
+
 ## Open the PR
 
 1. Follow the Opening a PR playbook to write the PR title and body, with one change: do not push, and do not open the PR yourself. Commit all work on `{{BRANCH}}`. Write `{{OUTBOX}}/pr.md`: line 1 is the PR title, line 2 is empty, and the body follows. The body uses these `##` headings and no others, in this order: `Decisions to confirm` and `Review not finished` (draft PRs only), then the `pr` skill's `Problem`, `Summary`, `Evidence`, and `Merge Danger` (always), then `Decisions`, `Test seams`, `Review findings`, and `Open items` (when they apply). Put any other section under one of them as a `###` heading.

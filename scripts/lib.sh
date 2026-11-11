@@ -160,22 +160,6 @@ closing_refs() {
     done
 }
 
-# Reads conflicting paths on stdin. Prints "agent" when the list is not empty and every path starts
-# with one of the space-separated prefixes in AGENT_CONFLICTS, else "owner".
-classify_conflict() {
-  local path prefix prefixes any=false matched
-  read -ra prefixes <<<"${AGENT_CONFLICTS:-}"
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    any=true matched=false
-    for prefix in ${prefixes[@]+"${prefixes[@]}"}; do
-      [[ "$path" == "$prefix"* ]] && matched=true
-    done
-    [ "$matched" = true ] || { echo owner; return; }
-  done
-  if [ "$any" = true ]; then echo agent; else echo owner; fi
-}
-
 # Reads the planner's claude --output-format json document on stdin. Prints its holds array when
 # every hold has an integer issue and string lists overlaps and files. Any other shape returns 1,
 # so a half-valid answer is never partly used.
