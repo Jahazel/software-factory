@@ -5,8 +5,8 @@
 # but runs no step.
 # Usage: orchestrate.sh   Needs GH_TOKEN, FACTORY_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_REPOSITORY,
 # GITHUB_REPOSITORY_OWNER, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, TRIGGER_LABEL, CAP, DRY_RUN, AGENT_CONFLICTS
-# (the migration folders, space-separated path prefixes, may be empty). Writes jobs=<JSON array of claimed jobs> to
-# GITHUB_OUTPUT. A job's mode says its kind: {"issue":n,"mode":"new","branch":""} for new work from
+# (the migration folders, space-separated path prefixes, may be empty). Writes jobs=<JSON array of
+# claimed jobs> to GITHUB_OUTPUT. A job's mode says its kind: {"issue":n,"mode":"new","branch":""} for new work from
 # main, {"issue":n,"mode":"continue","branch":b} to finish the pushed factory branch b of an earlier
 # run, or {"issue":n,"mode":"resolve","branch":b,"pr":p,"main":sha} for a resolve worker that merges
 # main into the open PR p on branch b.

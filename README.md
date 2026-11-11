@@ -46,7 +46,7 @@ branches, the orchestrator starts nothing for the issue, and the next run tries 
 
 ## Owner comments and project rules
 
-The owner can widen the project rules for one issue with a comment on it, for example: "Add
+The owner can change the project rules for one issue with a comment on it, for example: "Add
 `src/db/schema.ts` to the merge conflict deny list." The worker and resolve prompts use this order: an
 owner comment wins over the project rules for that issue only, and the project rules win over the
 prompt. Only the owner's comments count; the factory drops other comments before the agent runs.
@@ -65,7 +65,7 @@ After a resolved conflict, the worker runs every project check again and one ful
 round before it opens the PR. When the review has no round left, the worker opens a draft PR and
 names the merge commit as unreviewed. When the checks fail and the fix is not clear, the worker
 undoes the merge and blocks. The blocked note names each conflicting file and the PR on main that
-changed it. The gardener follows the same steps.
+changed it. The gardener follows the same steps, but it blocks instead of opening a draft PR.
 
 When main moves, the orchestrator merges it into each open factory PR. Every conflict gets a
 resolve worker. It follows the same steps, reviews only what the resolution changed, and blocks the
