@@ -1,0 +1,1 @@
+- The factory made `{{BRANCH}}` for this run from the latest `origin/main`. It holds no work yet.

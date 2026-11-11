@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: publish.sh <outbox>   Needs GH_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER,
-# GITHUB_RUN_ID, ISSUE, MODE (new or resolve), BRANCH, PROMPT, RUN_URL.
-# Outbox files: head.bundle (from pack-outbox.sh), pr.md (title line, blank line, body), evidence/
+# GITHUB_RUN_ID, ISSUE, MODE (new, continue, or resolve), BRANCH, PROMPT, RUN_URL.
+# Outbox files: head.bundle or no-commits (from pack-outbox.sh), pr.md (title line, blank line, body), evidence/
 # (images and videos the PR attaches), draft (opens the PR as a draft), follow-ups.md (one
 # ready-for-human issue for the PR's Open items), comments/*.md, blocked.md; the gardener also
 # writes issues/*.md ("title: ..." and "labels: ..." lines, a blank line, the body), report.md,
@@ -67,22 +67,30 @@ pgit() {
     git -C "$work" -c core.hooksPath=/dev/null "$@"
 }
 
+# Checks the head that BRANCH holds after publish: the bundle's head when bundle $1 exists, else the
+# pushed head (a continue run that added no commit). Prints why it is refused, or nothing.
 fetch_and_check_branch() {
   local bundle="$1" remote_tip base violations reason
   pgit fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" || return 1
   remote_tip=$(pgit ls-remote origin "refs/heads/$BRANCH" | awk '{ print $1 }') || return 1
   [ -z "$remote_tip" ] || pgit fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" || return 1
-  pgit bundle verify --quiet "$bundle" >/dev/null 2>&1 || { echo "the commits could not be read"; return; }
-  pgit fetch --quiet "$bundle" "+refs/heads/$BRANCH:refs/factory/head" 2>/dev/null || { echo "the bundle holds no branch $BRANCH"; return; }
+  [ "$MODE" = new ] || [ -n "$remote_tip" ] || { echo "branch $BRANCH is gone from GitHub"; return; }
+  if [ -f "$bundle" ]; then
+    pgit bundle verify --quiet "$bundle" >/dev/null 2>&1 || { echo "the commits could not be read"; return; }
+    pgit fetch --quiet "$bundle" "+refs/heads/$BRANCH:refs/factory/head" 2>/dev/null || { echo "the bundle holds no branch $BRANCH"; return; }
+  else
+    pgit update-ref refs/factory/head "refs/remotes/origin/$BRANCH" || return 1
+  fi
   base=$(pgit merge-base refs/remotes/origin/main refs/factory/head) || { echo "the branch shares no history with main"; return; }
+  [ "$MODE" = resolve ] || [ "$base" != "$(pgit rev-parse refs/factory/head)" ] || { echo "the branch holds no commits past main"; return; }
   violations=$(cd "$work" && tree_violations "$base" refs/factory/head) || { echo "the changed files could not be checked"; return; }
   [ -z "$violations" ] || { echo "the change touches files only the owner may change: $(paste -sd, - <<<"$violations" | sed 's/,/, /g')"; return; }
   # A push runs the pushed commit's workflows, so a branch from an older main could run removed ones.
   pgit diff --quiet refs/remotes/origin/main refs/factory/head -- .github .gitmodules || { echo "the branch's .github/ differs from main's"; return; }
   reason=$(pgit log --format=%B "$base..refs/factory/head" | closing_refs | closing_refusal "a commit message") || return 1
   [ -z "$reason" ] || { echo "$reason"; return; }
-  if [ "$MODE" = resolve ]; then
-    pgit merge-base --is-ancestor "refs/remotes/origin/$BRANCH" refs/factory/head || echo "the new head does not build on the PR's head; the factory never force-pushes"
+  if [ "$MODE" != new ]; then
+    pgit merge-base --is-ancestor "refs/remotes/origin/$BRANCH" refs/factory/head || echo "the new head does not build on the pushed head of $BRANCH; the factory never force-pushes"
   elif [ -n "$remote_tip" ] && [ "$remote_tip" != "$(pgit rev-parse refs/factory/head)" ]; then
     echo "branch $BRANCH already holds other commits"
   fi
@@ -149,6 +157,10 @@ create_issue() {
 outbox="$1"
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/publish-XXXXXX")/clone
 
+case "$MODE" in
+  new|continue|resolve) ;;
+  *) echo "Unknown MODE $MODE."; exit 1 ;;
+esac
 if [ "$MODE" = resolve ]; then
   target=$(gh pr list --repo "$repo" --head "$BRANCH" --state open --json number,isCrossRepository \
     --jq '[.[] | select(.isCrossRepository | not)] | .[0].number // ""')
@@ -158,7 +170,11 @@ else
   target="$ISSUE"
   author=$(gh issue view "$ISSUE" --repo "$repo" --json author --jq .author.login)
   [ "$author" = "$GITHUB_REPOSITORY_OWNER" ] || { echo "Issue #$ISSUE was opened by $author, not the owner."; exit 1; }
-  valid_factory_branch "$BRANCH" "$ISSUE" "$GITHUB_RUN_ID" || refuse_and_exit "$target" "branch $BRANCH is not this run's factory branch"
+  if [ "$MODE" = new ]; then
+    valid_factory_branch "$BRANCH" "$ISSUE" "$GITHUB_RUN_ID" || refuse_and_exit "$target" "branch $BRANCH is not this run's factory branch"
+  else
+    valid_factory_branch "$BRANCH" "$ISSUE" || refuse_and_exit "$target" "branch $BRANCH is not a factory branch of issue #$ISSUE"
+  fi
 fi
 if [ "$PROMPT" = gardener.md ]; then
   gh issue view "$ISSUE" --repo "$repo" --json labels --jq '[.labels[].name] | index("gardening:report") != null' | grep -qx true \
@@ -170,8 +186,9 @@ outbox=$(cd "$outbox" && pwd)
 reason=$(text_refusal "$outbox")
 [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 if [ -f "$outbox/pr.md" ]; then
-  [ "$MODE" = new ] || refuse_and_exit "$target" "a resolve job opens no PR"
-  [ -f "$outbox/head.bundle" ] || refuse_and_exit "$target" "the PR has no commits"
+  [ "$MODE" != resolve ] || refuse_and_exit "$target" "a resolve job opens no PR"
+  [ -f "$outbox/head.bundle" ] || { [ "$MODE" = continue ] && [ -f "$outbox/no-commits" ]; } \
+    || refuse_and_exit "$target" "the PR has no commits"
   reason=$(closing_refs <"$outbox/pr.md" | closing_refusal "the PR body") || exit 1
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
   reason=$(pr_body_refusal "$outbox")
@@ -179,13 +196,13 @@ if [ -f "$outbox/pr.md" ]; then
   reason=$(evidence_refusal "$outbox")
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi
-if [ -f "$outbox/head.bundle" ]; then
+if [ -f "$outbox/head.bundle" ] || { [ "$MODE" = continue ] && [ -f "$outbox/pr.md" ]; }; then
   git clone --quiet --filter=blob:none --no-checkout "${PUBLISH_REMOTE:-https://github.com/$repo}" "$work"
   reason=$(fetch_and_check_branch "$outbox/head.bundle") || exit 1
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi
 
-for f in "$outbox"/comments/*.md; do [ ! -f "$f" ] || [ "$MODE" != new ] || post_once "$target" "$f"; done
+for f in "$outbox"/comments/*.md; do [ ! -f "$f" ] || [ "$MODE" = resolve ] || post_once "$target" "$f"; done
 if [ -f "$outbox/head.bundle" ]; then
   pgit push --quiet origin "refs/factory/head:refs/heads/$BRANCH"
   echo "Pushed $BRANCH."

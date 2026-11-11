@@ -11,7 +11,7 @@ run_url="${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY/actions/run
 unchecked=0
 while read -r pr branch main; do
   settle_resolve "$pr" "$branch" "$main" "$run_url" || { echo "PR #$pr: the resolve check failed; the owner checks the PR"; unchecked=1; }
-done < <(jq -r '.[] | select(.branch != "") | "\(.pr) \(.branch) \(.main)"' <<<"$JOBS")
+done < <(jq -r '.[] | select(.mode == "resolve") | "\(.pr) \(.branch) \(.main)"' <<<"$JOBS")
 for n in $(jq -r '.[].issue' <<<"$JOBS"); do settle_issue "$n" "$run_url"; done
 # A PR left unchecked could start the same paid resolve worker again, so no new run starts now.
 if [ "$unchecked" = 1 ]; then
