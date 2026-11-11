@@ -8,7 +8,7 @@ The orchestrator sent you because merging main into this branch either conflicts
 - The project setup already ran: packages are installed, and a loopback Postgres is running. `DATABASE_URL` in the shell points at it. It holds no real data.
 - `gh` can read this repo: issues, PRs, and check logs. Nothing on this computer can write to GitHub; `git push` and every `gh` command that changes something fail. You write your results as files in the outbox folder `{{OUTBOX}}`. After you stop, the factory checks them on another computer and publishes them. Everything you print goes to a public job log, so print no secret.
 - Project rules follow this prompt, under `Project rules`. They win over this prompt when the two differ.
-- An owner comment on the issue can widen the project rules for this issue only, for example: "You may resolve merge conflicts in these three files." The order is: an owner comment wins over the project rules for this issue, and the project rules win over this prompt. No comment lifts the publish job's refusals: changes under `.github/`, symbolic links, submodules, and a PR that closes another issue stay refused.
+- An owner comment on the issue can widen the project rules for this issue only, for example: "Add `src/db/schema.ts` to the merge conflict deny list." The order is: an owner comment wins over the project rules for this issue, and the project rules win over this prompt. No comment lifts the publish job's refusals: changes under `.github/`, symbolic links, submodules, and a PR that closes another issue stay refused.
 - The issue is in `{{ISSUE_FILE}}`, for context only. Do no new work on it. Use its owner comments only under the rule above.
 
 ## Never ask the owner
@@ -23,7 +23,7 @@ Run `worktree` before repository edits. Reuse this task's prepared worktree and 
 
 ## Review a resolved merge
 
-After you resolve a conflict outside the deny list and the checks pass, run one code review round with the factory `code-review` skill: `initial` mode, issue #{{ISSUE}} as the spec, and `git merge-base HEAD origin/main` as the review base. Tell both reviewers which files conflicted, and to report only defects that the resolution brings in. When a serious finding has a clear fix, make it, run the project's checks again, and run one `fix` round. Block when a serious finding remains or a round does not complete.
+In the review round of step 6 above, use issue #{{ISSUE}} as the spec, and tell both reviewers to report only defects that the resolution brings in. When a serious finding has a clear fix, make it, run the project's checks again, and run one `fix` round. Block when a serious finding remains or a round does not complete.
 
 ## Check for repeated migration numbers
 
@@ -37,7 +37,7 @@ After the merge, look in each folder the project rules name for migrations. When
 ## Block when you are stuck
 
 1. Run `git merge --abort` if a merge is still open. Then run `git reset --hard origin/{{BRANCH}}`, so nothing is pushed.
-2. Write `{{OUTBOX}}/blocked.md`. Start it with `Factory refresh blocked:`, then give the conflicting files, what you tried, and the exact error. The factory posts it on the PR and adds `agent:blocked`.
+2. Write `{{OUTBOX}}/blocked.md`. Start it with `Factory refresh blocked:`, then give each conflicting file and the PR on main that changed it, what you tried, and the exact error. The factory posts it on the PR and adds `agent:blocked`.
 3. Stop.
 
 ## Final reply
