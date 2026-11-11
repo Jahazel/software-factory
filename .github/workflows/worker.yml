@@ -146,16 +146,18 @@ jobs:
         if: inputs.issue != '0'
         env:
           GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          BRANCH: ${{ inputs.branch }}
         run: |
           test -f "${{ inputs.rules }}" || { echo "Issue runs need the project rules file (the rules input)."; exit 1; }
-          case "${{ inputs.mode }}/${{ inputs.branch }}" in
+          case "$MODE/$BRANCH" in
             new/|continue/?*|resolve/?*) ;;
-            *) echo "Mode ${{ inputs.mode }} does not fit branch '${{ inputs.branch }}'."; exit 1 ;;
+            *) echo "Mode $MODE does not fit branch '$BRANCH'."; exit 1 ;;
           esac
           git config user.name "software-factory worker"
           git config user.email "72827154+Jahazel@users.noreply.github.com"
           mkdir -p "$RUNNER_TEMP/worker" "$RUNNER_TEMP/outbox"
-          branch=$(bash "$RUNNER_TEMP/factory/scripts/prepare-issue.sh" "${{ inputs.issue }}" "$RUNNER_TEMP/worker/issue.md" "$RUNNER_TEMP/project-worktree" "${{ inputs.branch }}")
+          branch=$(bash "$RUNNER_TEMP/factory/scripts/prepare-issue.sh" "${{ inputs.issue }}" "$RUNNER_TEMP/worker/issue.md" "$RUNNER_TEMP/project-worktree" "$BRANCH")
           {
             echo "branch=$branch"
             echo "worktree=$RUNNER_TEMP/project-worktree"

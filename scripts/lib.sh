@@ -38,7 +38,7 @@ valid_factory_branch() {
 newest_factory_branch() {
   local b
   while IFS= read -r b; do
-    valid_factory_branch "$b" "$1" && [[ "$b" =~ -([0-9]+)$ ]] && echo "${BASH_REMATCH[1]} $b"
+    if valid_factory_branch "$b" "$1" && [[ "$b" =~ -([0-9]+)$ ]]; then echo "${BASH_REMATCH[1]} $b"; fi
   done | sort -k1,1n | tail -1 | cut -d' ' -f2-
 }
 

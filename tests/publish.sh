@@ -222,8 +222,8 @@ continued() {
   if [ -n "$1" ]; then
     (cd "$work/agent" && eval "$1")
     git -C "$work/agent" add -A; git -C "$work/agent" commit --quiet -m more
-    bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$old" "origin/$old" >/dev/null
   fi
+  bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$old" "origin/$old" >/dev/null
   write_pr
 }
 cont() { MODE=continue BRANCH="$old" run; }
@@ -262,6 +262,17 @@ git -C "$work/seed" rm --quiet .github/workflows/ci.yml; git -C "$work/seed" com
 cont
 check "a pushed head whose .github/ differs from main's is refused" 'grep -q "differs from main" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
 git -C "$work/seed" revert --quiet --no-edit HEAD >/dev/null; git -C "$work/seed" push --quiet origin main
+
+seed_old; continued 'echo r > app.txt'
+rm "$work/out/head.bundle"
+cont
+check "a continue run whose commits did not reach the outbox is refused" 'grep -q "Factory publish refused: the PR has no commits" "$GH_LOG" && ! grep -q "pr create" "$GH_LOG"'
+
+seed_old; continued ''
+git -C "$work/agent" switch --quiet --detach; git -C "$work/agent" branch --quiet -D "$old"
+bash "$root/scripts/pack-outbox.sh" "$work/agent" "$work/out" "$old" "origin/$old" >/dev/null
+cont
+check "a continue run whose branch is gone locally is refused" 'grep -q "Factory publish refused: the PR has no commits" "$GH_LOG"'
 
 seed_old; before=$(tip "$old"); continued ''
 rm "$work/out/pr.md"; printf 'Factory worker blocked: still no service.\n' > "$work/out/blocked.md"

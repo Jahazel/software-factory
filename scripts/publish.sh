@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: publish.sh <outbox>   Needs GH_TOKEN, GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER,
 # GITHUB_RUN_ID, ISSUE, MODE (new, continue, or resolve), BRANCH, PROMPT, RUN_URL.
-# Outbox files: head.bundle (from pack-outbox.sh), pr.md (title line, blank line, body), evidence/
+# Outbox files: head.bundle or no-commits (from pack-outbox.sh), pr.md (title line, blank line, body), evidence/
 # (images and videos the PR attaches), draft (opens the PR as a draft), follow-ups.md (one
 # ready-for-human issue for the PR's Open items), comments/*.md, blocked.md; the gardener also
 # writes issues/*.md ("title: ..." and "labels: ..." lines, a blank line, the body), report.md,
@@ -82,7 +82,7 @@ fetch_and_check_branch() {
     pgit update-ref refs/factory/head "refs/remotes/origin/$BRANCH" || return 1
   fi
   base=$(pgit merge-base refs/remotes/origin/main refs/factory/head) || { echo "the branch shares no history with main"; return; }
-  [ "$base" != "$(pgit rev-parse refs/factory/head)" ] || { echo "the branch holds no commits past main"; return; }
+  [ "$MODE" = resolve ] || [ "$base" != "$(pgit rev-parse refs/factory/head)" ] || { echo "the branch holds no commits past main"; return; }
   violations=$(cd "$work" && tree_violations "$base" refs/factory/head) || { echo "the changed files could not be checked"; return; }
   [ -z "$violations" ] || { echo "the change touches files only the owner may change: $(paste -sd, - <<<"$violations" | sed 's/,/, /g')"; return; }
   # A push runs the pushed commit's workflows, so a branch from an older main could run removed ones.
@@ -187,7 +187,8 @@ reason=$(text_refusal "$outbox")
 [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 if [ -f "$outbox/pr.md" ]; then
   [ "$MODE" != resolve ] || refuse_and_exit "$target" "a resolve job opens no PR"
-  [ -f "$outbox/head.bundle" ] || [ "$MODE" = continue ] || refuse_and_exit "$target" "the PR has no commits"
+  [ -f "$outbox/head.bundle" ] || { [ "$MODE" = continue ] && [ -f "$outbox/no-commits" ]; } \
+    || refuse_and_exit "$target" "the PR has no commits"
   reason=$(closing_refs <"$outbox/pr.md" | closing_refusal "the PR body") || exit 1
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
   reason=$(pr_body_refusal "$outbox")
