@@ -11,8 +11,12 @@ mkdir -p "$dest"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-grep -vE '^[[:space:]]*(#|$)' "$lock" | while read -r name repo commit path where; do
-  if [ "$runner" = "--runner" ] && [ "$where" = "mac" ]; then continue; fi
+{ grep -vE '^[[:space:]]*(#|$)' "$lock" || true; } | while read -r name repo commit path where; do
+  case "$where" in
+    mac) [ "$runner" = "--runner" ] && continue ;;
+    all) ;;
+    *) echo "$name: where must be mac or all, not '$where'" >&2; exit 1 ;;
+  esac
   marker="$dest/$name/.locked-commit"
   if [ -f "$marker" ] && [ "$(cat "$marker")" = "$commit" ]; then
     echo "$name: already at $commit"
