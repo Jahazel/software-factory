@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Run on the owner's Mac. Refreshes claude/ from ~/.claude: pstack, the router hook, the model rules, and the skills.
-# The job computer installs this copy with scripts/install-claude.sh.
 set -euo pipefail
-src="$HOME/.claude"
-dest="$(cd "$(dirname "$0")/.." && pwd)/claude"
+workspace_claude="${WORKSPACE:-$HOME/Workspace}/.claude"
+home_claude="$HOME/.claude"
+dest="${1:-$(cd "$(dirname "$0")/.." && pwd)/claude}"
+for f in skills.lock install-skills.sh; do
+  [ -f "$workspace_claude/$f" ] || { echo "No $f in $workspace_claude. Set WORKSPACE to the home repo." >&2; exit 1; }
+done
 rm -rf "$dest"
 mkdir -p "$dest"
-# Symlinked skills are third-party installs; install-claude.sh gets them from their own repos.
-# synced/ holds Anthropic's document skills, which workers do not use.
-# impeccable, find-skills, and security-audit are third-party copies, not links. Workers do not use
-# find-skills or security-audit; install-claude.sh gets impeccable at a pinned version.
-rsync -a --no-links --exclude .DS_Store --exclude synced/ --exclude __pycache__/ \
-  --exclude /skills/impeccable/ --exclude /skills/find-skills/ --exclude /skills/security-audit/ \
-  "$src/skills" "$dest/"
-rsync -a --exclude .DS_Store --exclude __pycache__/ "$src/personal-router-source" "$src/personal-router" "$src/pstack-models.md" "$src/agents" "$dest/"
+# synced/ and .trash/ are written by the Claude app. Workers use neither find-skills nor logo-design.
+excludes=(--exclude .DS_Store --exclude synced/ --exclude .trash/ --exclude __pycache__/ --exclude /skills/find-skills/ --exclude /skills/logo-design/)
+while read -r name _; do excludes+=(--exclude "/skills/$name/"); done < <(grep -vE '^[[:space:]]*(#|$)' "$workspace_claude/skills.lock" || true)
+rsync -a --no-links "${excludes[@]}" "$workspace_claude/skills" "$dest/"
+cp "$workspace_claude/skills.lock" "$workspace_claude/install-skills.sh" "$dest/"
+rsync -a --exclude .DS_Store --exclude __pycache__/ "$home_claude/personal-router-source" "$home_claude/personal-router" "$home_claude/pstack-models.md" "$home_claude/agents" "$dest/"
 echo "Synced $(ls "$dest/skills" | wc -l | tr -d ' ') skills, $(ls "$dest/agents" | wc -l | tr -d ' ') agents, and pstack into $dest"

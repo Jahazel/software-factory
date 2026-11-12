@@ -103,7 +103,7 @@ jobs:
             | jq -r 'select(.type == "system" and .subtype == "init") | .skills[]')
           [ -n "$names" ] || { echo "Claude reported no skills."; exit 1; }
           echo "$names"
-          for skill in pstack:poteto-mode worktree architect tdd code-review impeccable; do
+          for skill in pstack:poteto-mode worktree architect tdd code-review; do
             grep -qx "$skill" <<<"$names" || { echo "Claude does not see the skill $skill."; exit 1; }
           done
           for skill in principle-prove-it-works; do
