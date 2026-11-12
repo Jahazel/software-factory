@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Checks the skills.lock rules in claude/install-skills.sh without network access.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work=$(mktemp -d)

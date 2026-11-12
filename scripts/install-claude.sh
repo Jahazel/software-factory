@@ -6,7 +6,6 @@ home_claude="$HOME/.claude"
 mkdir -p "$home_claude"
 cp -R "$src/." "$home_claude/"
 
-# Third-party skills, at the commits in skills.lock.
 bash "$src/install-skills.sh" "$home_claude/skills" --runner
 
 # The files name the owner's Mac home folder. Point them at this computer's home folder.

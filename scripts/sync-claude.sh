@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Run on the owner's Mac. Refreshes claude/: skills and skills.lock from the Workspace home repo,
-# and pstack, the router hook, the model rules, and agents from ~/.claude.
-# The job computer installs this copy with scripts/install-claude.sh.
-# Usage: sync-claude.sh [dest]. The Workspace drift check passes a temporary dest.
 set -euo pipefail
 workspace_claude="${WORKSPACE:-$HOME/Workspace}/.claude"
 home_claude="$HOME/.claude"
@@ -12,8 +8,7 @@ for f in skills.lock install-skills.sh; do
 done
 rm -rf "$dest"
 mkdir -p "$dest"
-# Locked third-party skills are installed on runners from skills.lock, not copied.
-# synced/ and .trash/ belong to the Claude app's document-skill sync. Workers use neither find-skills nor logo-design.
+# synced/ and .trash/ are written by the Claude app. Workers use neither find-skills nor logo-design.
 excludes=(--exclude .DS_Store --exclude synced/ --exclude .trash/ --exclude __pycache__/ --exclude /skills/find-skills/ --exclude /skills/logo-design/)
 while read -r name _; do excludes+=(--exclude "/skills/$name/"); done < <(grep -vE '^[[:space:]]*(#|$)' "$workspace_claude/skills.lock" || true)
 rsync -a --no-links "${excludes[@]}" "$workspace_claude/skills" "$dest/"

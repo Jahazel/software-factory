@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Installs the third-party skills in skills.lock, each at its locked commit.
-# Usage: install-skills.sh <skills-dir> [--runner]
-# --runner skips rows whose "where" column is "mac".
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 lock="$here/skills.lock"
