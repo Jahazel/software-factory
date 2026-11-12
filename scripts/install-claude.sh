@@ -6,9 +6,8 @@ home_claude="$HOME/.claude"
 mkdir -p "$home_claude"
 cp -R "$src/." "$home_claude/"
 
-# Third-party skill, pinned to the version on the owner's Mac.
-git clone --quiet --depth 1 --branch skill-v4.3.1 https://github.com/pbakaus/impeccable "$RUNNER_TEMP/impeccable"
-cp -R "$RUNNER_TEMP/impeccable/.claude/skills/impeccable" "$home_claude/skills/"
+# Third-party skills, at the commits in skills.lock.
+bash "$src/install-skills.sh" "$home_claude/skills" --runner
 
 # The files name the owner's Mac home folder. Point them at this computer's home folder.
 grep -rlZ "/Users/jahazelsanchez" "$home_claude" | xargs -0 --no-run-if-empty sed -i "s|/Users/jahazelsanchez|$HOME|g"
