@@ -9,6 +9,7 @@ evidence_max_bytes=10485760
 
 # Runs git with GH_TOKEN sent to github.com, so a private repo can be read and pushed.
 github_git() {
+  : "${GH_TOKEN:?github_git needs GH_TOKEN}"
   GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
     GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" \
     git "$@"
