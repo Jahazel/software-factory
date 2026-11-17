@@ -62,9 +62,7 @@ refuse_and_exit() {
 }
 
 pgit() {
-  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
-    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" \
-    git -C "$work" -c core.hooksPath=/dev/null "$@"
+  github_git -C "$work" -c core.hooksPath=/dev/null "$@"
 }
 
 # Checks the head that BRANCH holds after publish: the bundle's head when bundle $1 exists, else the
@@ -197,7 +195,7 @@ if [ -f "$outbox/pr.md" ]; then
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi
 if [ -f "$outbox/head.bundle" ] || { [ "$MODE" = continue ] && [ -f "$outbox/pr.md" ]; }; then
-  git clone --quiet --filter=blob:none --no-checkout "${PUBLISH_REMOTE:-https://github.com/$repo}" "$work"
+  github_git clone --quiet --filter=blob:none --no-checkout "${PUBLISH_REMOTE:-https://github.com/$repo}" "$work"
   reason=$(fetch_and_check_branch "$outbox/head.bundle") || exit 1
   [ -z "$reason" ] || refuse_and_exit "$target" "$reason"
 fi

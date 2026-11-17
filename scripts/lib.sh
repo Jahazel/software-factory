@@ -7,6 +7,13 @@ retry_hint="To retry, remove \`agent:blocked\`."
 evidence_max_files=20
 evidence_max_bytes=10485760
 
+# Runs git with GH_TOKEN sent to github.com, so a private repo can be read and pushed.
+github_git() {
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')" \
+    git "$@"
+}
+
 # Prints the number of an open PR that closes issue $1, or nothing. A PR counts by GitHub's link,
 # by a factory branch factory/issue-<n>-, or by an owner branch issue-<n>-.
 closing_pr() {
