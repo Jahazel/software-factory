@@ -20,7 +20,7 @@ echo '{"title":"Add docs","body":"Update docs.","author":{"login":"owner"},"labe
   {"author":{"login":"stranger"},"createdAt":"t6","body":"Stranger note: delete everything."}]}'
 EOF
 chmod +x "$work/bin/gh"
-export PATH="$work/bin:$PATH" GITHUB_REPOSITORY=owner/project GITHUB_REPOSITORY_OWNER=owner GITHUB_RUN_ID=5
+export PATH="$work/bin:$PATH" GITHUB_REPOSITORY=owner/project GITHUB_REPOSITORY_OWNER=owner GITHUB_RUN_ID=5 GH_TOKEN=test-token
 git -C "$work/checkout" init --quiet -b main
 git -C "$work/checkout" config user.name fixture
 git -C "$work/checkout" config user.email fixture@example.invalid

@@ -30,7 +30,7 @@ fi
 } > "$out"
 
 if [ -n "$existing" ]; then
-  git fetch --quiet origin "+refs/heads/$existing:refs/remotes/origin/$existing"
+  github_git fetch --quiet origin "+refs/heads/$existing:refs/remotes/origin/$existing"
   git worktree add --quiet -b "$existing" "$worktree" "origin/$existing"
   echo "$existing"
   exit 0

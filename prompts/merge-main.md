@@ -1,4 +1,4 @@
-1. Run `git rev-parse HEAD` and keep the hash: it is the head before the merge. Run `git fetch origin main`, then `git merge origin/main`.
+1. Run `git rev-parse HEAD` and keep the hash: it is the head before the merge. Run `git merge origin/main`. The checkout already fetched main when the job started; do not fetch again, because this computer keeps no GitHub sign-in for git.
 2. Resolve each conflict whose path is not on the deny list. Keep what both sides meant: the change on this branch and the change on main. To learn what main meant, find the PR that changed the file: `git log origin/main -- <file>`, then `gh pr list --state merged --search <commit>`.
 3. The deny list is the path prefixes the project rules or an owner comment name for it, such as `migrations/`. Resolve a conflict on the deny list only as the project rules or an owner comment say for that path. When they say nothing for it, block.
 4. When the merge changes dependency or migration files, install from the merged lockfile and apply schema updates with the project's documented commands. Reuse the running services from project setup. Do not rerun a setup command that recreates those services.
