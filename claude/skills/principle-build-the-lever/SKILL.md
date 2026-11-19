@@ -1,15 +1,15 @@
 ---
 name: principle-build-the-lever
-description: "Apply when the same edit, check, or analysis repeats in more than about five places, or when a reviewer must rerun a check to trust the result: migrations, bulk renames, data comparisons. Build the tool that does it or proves it (codemod, script, generator, or a skill your subagents follow). The tool is the artifact a reviewer can rerun."
+description: "Apply to any non-trivial work, not just bulk work: edits, migrations, analyses, checks. Build the tool that does it or proves it (codemod, script, generator, or a skill your subagents follow) instead of working by hand. The tool is the artifact a reviewer can rerun."
 user-invocable: false
 ---
 # Build the Lever
 
-When the work repeats, or a check must be rerun to be trusted, build the tool that does it instead of doing it by hand.
+When the work isn't trivial, build the tool that does it instead of doing it by hand.
 
 A codemod, generator, or script does the work the same way every time and reruns for free. The tool is one artifact a reviewer can read and rerun to check the work. Hand-done changes can only be re-verified by redoing them. A deterministic script turns "trust me" into "run this".
 
-Build the lever when the same change repeats in more than about five places, or when a rerunnable tool is what makes the result checkable. Make the edits by hand when they are few and a reviewer can check them by reading the diff.
+Default to building the lever. Skip it only when the task is trivial, a couple of obvious edits you can see at a glance.
 
 - Do the first unit by hand to learn the recipe, then build the tool. Prove it by rerunning it on that unit and diffing against your hand-done version. Make the lever safe to rerun.
 - For a comparison tool, seed one known-bad change for each output it claims to compare, and confirm the tool reports each mismatch. For example, change a total, then separately swap item assignments while keeping the totals. If required input is missing, the tool must refuse or report the result as inconclusive, never as a match. Keep these controls with the experiment and rerun them before you trust its results.
@@ -19,6 +19,6 @@ Build the lever when the same change repeats in more than about five places, or 
 - Applying this principle produces a file. If you cited it and there is no codemod, script, generator, or delegate skill in the diff, you didn't apply it.
 - Commit the lever when the work outlives the session.
 
-A one-off earns a lever only when the lever is what makes the work checkable. Per the [Laziness Protocol](../principle-laziness-protocol/SKILL.md), build the smallest script that does or proves the job, never a framework.
+The bar is triviality, not repetition. A one-off still earns a lever when the lever is what makes the work checkable. Per the [Laziness Protocol](../principle-laziness-protocol/SKILL.md), build the smallest script that does or proves the job, never a framework.
 
 Distinct from [Encode Lessons in Structure](../principle-encode-lessons-in-structure/SKILL.md), which makes a recurring instruction a durable guardrail. This is throughput and reviewability on the work in front of you. For scripting the verification itself, see [Prove It Works](../principle-prove-it-works/SKILL.md).

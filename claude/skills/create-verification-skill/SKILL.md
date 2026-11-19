@@ -9,6 +9,10 @@ On Codex, read the [platform mapping](../poteto-mode/references/codex-tools.md),
 
 On GitHub Copilot, read the [platform mapping](../poteto-mode/references/copilot-tools.md), including its per-skill notes, before following this skill.
 
+On Muse, read the [platform mapping](../poteto-mode/references/muse-tools.md), including its per-skill notes, before following this skill.
+
+On Antigravity, read the [platform mapping](../poteto-mode/references/agy-tools.md), including its per-skill notes, before following this skill.
+
 Every serious project needs a scripted way to drive the real app and prove behavior: launch it, exercise a feature the way a user would, and capture evidence. This skill generates that as a project-local skill (`.claude/skills/verify/`) tailored to the repo. Name it `verify`. At the repo root a project skill by that name replaces Claude Code's bundled `/verify`, which only the user can invoke, so every playbook that names the driver skill can call the project one ([Claude Code 2.1.200 or later](https://code.claude.com/docs/en/skills#run-and-verify-your-app)). In a monorepo, write it in the touched package directory instead. You write the generator's output for the next agent, not for a human: it will be read cold, mid-task, by an agent that has never seen the app.
 
 ## 1. Interview the repo, not the user
@@ -28,14 +32,11 @@ If the checkout doesn't build or start as-is, fix that first (or report it preci
 Write `.claude/skills/verify/SKILL.md` with YAML frontmatter (`name: verify` and a `description` that names the app, the surface, and when to reach for it — without frontmatter the skill never registers, and with `disable-model-invocation` the model cannot call it) and these sections, each grounded in what the interview actually found (no placeholders left):
 
 - **Launch:** the exact command that starts the app for verification, and how to tell it's ready (a log line, a prompt). Launch must reach a usable state from an empty data dir, including any migrations and seed data. Ready means usable, not just that a process answers. A database health check can pass while its init scripts are still running. Include teardown. For a short-lived CLI or TUI there is no server to keep alive: launch means build the binary (or install deps) once, then start each drive in its own isolated PTY or tmux session.
-- **Reuse:** keep a healthy isolated server or UI instance and its fixture data through implementation, review, and required fixes while they remain useful. Reuse fixtures only when they meet the next check's preconditions; create fresh fixtures for checks that require empty state. Respect the app's restart rules. Reusing setup does not reuse proof: rerun affected user paths after behavior changes; reuse a passing result only when the relevant behavior is unchanged. Short-lived commands still use isolated sessions per drive.
 - **Doctor:** one read-only check that answers "is this instance worth driving?" — process up, right version/build, port owned by us, auth valid. An agent runs this first whenever anything looks off.
-- **Drive:** the harness recipe with real selectors/commands from this repo, not examples. Prefer stable handles (ARIA labels, data attributes, prompt strings, route paths) over coordinates and tab order. For browser work, read a text-only snapshot on a new screen or when a locator is missing. Confirm known outcomes with targeted waits; read only the few values needed for the next decision. Stop a dependent action sequence on failure and inspect the failed state before continuing.
+- **Drive:** the harness recipe with real selectors/commands from this repo, not examples. Prefer stable handles (ARIA labels, data attributes, prompt strings, route paths) over coordinates and tab order.
 - **Evidence:** what to capture for a proof and where it goes. State the proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name: some dry-runs still touch the network or open a browser.
-- **Cleanup:** how to tear down instances the run created. Keep useful setup through review and affected rechecks; perform final teardown when the task finishes or stops, recording unfinished checks. Clean failed or invalid setup before replacement. Never kill by process name; kill what you started. Cleanup removes instances and scratch state, never the evidence: proof artifacts survive the teardown, in a location the skill names.
+- **Cleanup:** how to tear down instances the run created. Never kill by process name; kill what you started. Cleanup removes instances and scratch state, never the evidence: proof artifacts survive the teardown, in a location the skill names.
 - **Helpers:** any script the skill ships is executable and its invocation is shown in the skill body. A helper the reader has to reverse-engineer is not a helper.
-
-Save full browser evidence to the named artifact directory. Return only the status, needed locators, relevant values or error, and artifact paths to the agent; inspect full artifacts when diagnosing a failure. Preserve the action-and-result proof required above.
 
 ## 3. Seed the feature map
 

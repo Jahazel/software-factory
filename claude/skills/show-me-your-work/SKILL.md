@@ -5,7 +5,13 @@ description: "Keep a reviewable decision trail for long-running or unattended wo
 
 # Show me your work
 
+On Codex, read the [platform mapping](../poteto-mode/references/codex-tools.md), including its per-skill notes, before following this skill.
+
 On GitHub Copilot, read the [platform mapping](../poteto-mode/references/copilot-tools.md), including its per-skill notes, before following this skill.
+
+On Muse, read the [platform mapping](../poteto-mode/references/muse-tools.md), including its per-skill notes, before following this skill.
+
+On Antigravity, read the [platform mapping](../poteto-mode/references/agy-tools.md), including its per-skill notes, before following this skill.
 
 Keep one canonical log.
 
@@ -55,7 +61,7 @@ Commit it only when the work is ambitious enough that a reviewer needs the trail
 
 ## Audit the log against the transcript
 
-At the end of the run, before handing back, check the log told the truth. Use the current harness's record of this conversation. Confirm that the record belongs to this run. Read only this run's messages and tool results. In Claude Code, locate this run's transcript within `~/.claude/projects/<encoded-cwd>/`. Keep the lookup within this project's directory and select only this run's transcript. In other harnesses, use the available conversation record or transcript for this run. If the full record is unavailable, check the evidence you can access and mark the conversation audit incomplete. Report which part of the record was unavailable. Walk this run's rows against what actually happened. Each stretch of them begins at one of this run's `start` rows, or at the first row if this run created the log, and ends at the next `start` row of another run:
+At the end of the run, before handing back, check the log told the truth. Read this run's transcript under Claude Code's per-project transcripts directory at `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded-cwd>/`, which `node <plugin>/skills/reflect/scripts/claude-project-dir.mjs` prints. Don't glob across `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/`. That reads unrelated private chats. Walk this run's rows against what actually happened. Each stretch of them begins at one of this run's `start` rows, or at the first row if this run created the log, and ends at the next `start` row of another run:
 
 - Check that every row maps to a real decision or action.
 - Check that each row's evidence resolves and shows what the row claims.
@@ -65,14 +71,14 @@ Correct the log, not the story. The audit never edits or removes a row, even an 
 
 ## Cross-model review of the trail
 
-Run this review only when the user will review the result after stepping away. For attended work, keep the decision trail but do not start a decision-trail reviewer. For unattended work, use a fresh reviewer on a different model from the worker. Prefer a different model family when available. The reviewer must not have written the work or its decision log. Self-review is not a substitute. The reviewer reads the decision log, this run's conversation record, and the supporting evidence, then flags what the user should pay attention to. This review checks decisions and evidence rather than redoing the work. If no suitable different model can run, report the review as incomplete. If the conversation record is incomplete, report that limit and keep the full review incomplete.
+Before handing back, spawn a subagent on a different model family from the one that did the work. Self-review is not a substitute. The subagent reads the audit trail and the run's transcript, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky. Pick each subagent's reasoning level for the job, per the Subagents section of the **poteto-mode** skill.
 
 - Decisions logged with weak or absent evidence.
 - Verification steps skipped or claimed without proof in the transcript.
 - Choices that look risky in hindsight (premature, scope-creeping, papering over a symptom).
 - Gaps the user would otherwise miss on a casual skim.
 
-For an unattended run that produced a trail, end the reply with an "Attention" section. When a reviewer ran, lead with its model on its own line (`reviewed by <model>`), then list each flag pointing to specific rows or moments and any limits on the review. "No flags" is a valid value only for a completed review. When no reviewer ran for an unattended run, state "Review incomplete", give the reason, and list known open concerns. Never name a model as a reviewer that did not run. For attended runs, omit this section.
+Every reply for a run that produced a trail ends with an "Attention" section. Lead with the reviewer's model on its own line (`reviewed by <model>`), then list each flag pointing to specific rows or moments. "No flags" is a valid value. The model name is not.
 
 ## Reviewing the trail
 

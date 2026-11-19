@@ -1,12 +1,11 @@
 ---
 name: unslop
 description: Cut AI tells from any writing.
-disable-model-invocation: true
 ---
 
 # Unslop
 
-Edit text to remove AI patterns. Scan for the patterns below, then rewrite. Preserve meaning and match the intended tone. Then self-audit: "What makes this obviously AI generated?" Fix remaining tells.
+Edit text to remove AI patterns. Scan for the patterns below, then rewrite. Preserve meaning and match the intended tone.
 
 ## Patterns to detect and fix
 
