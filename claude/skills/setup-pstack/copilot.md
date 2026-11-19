@@ -1,6 +1,6 @@
 # Setup pstack on GitHub Copilot
 
-On GitHub Copilot this file replaces the model, effort, and hook questions in steps 1, 3, and 4 of [setup-pstack](SKILL.md), the sheet header in step 6, and step 7. Steps 2, 5, 8, and 9 still apply. pstack ships no Copilot model defaults, so every model in the sheet comes from the user's answers. Never pick a model the user has not chosen, and never write the Claude Code names in [Models](SKILL.md#models) or step 6's values into a Copilot sheet.
+On GitHub Copilot this file replaces the model, effort, and hook questions in steps 1, 3, and 4 of [setup-pstack](SKILL.md), the sheet header in step 6, and step 7. Steps 2, 5, 8, 9, and 10 still apply. pstack ships no Copilot model defaults, so every model in the sheet comes from the user's answers. Never pick a model the user has not chosen, and never write the Claude Code names in [Models](SKILL.md#models) or step 6's values into a Copilot sheet.
 
 Run setup on a model at least as strong as gpt-5.4-mini or a Sonnet-class Claude model. On a Haiku-class model, setup picked models the user never chose in about half of the smoke runs.
 
@@ -25,7 +25,7 @@ A Copilot sheet uses step 6's role lines and settings under this header in place
 ```markdown
 # pstack model configuration
 
-Per-role model choices for pstack skills on GitHub Copilot, written by setup-pstack. Every role keeps its line; rerun setup-pstack to change one. A value of `inherit-parent` or `auto` runs that role on the parent session's model (the `task` call omits `model`). A model may carry a reasoning effort, as in `gpt-5.5 @xhigh` (levels: low, medium, high, xhigh, max), which the `task` call passes as `reasoning_effort`. `default effort` sets the level for a value without one; `session` keeps the parent session's effort. `session hook: off` stops the SessionStart hook from injecting the poteto-mode mandate; any other value, or no line, leaves it on.
+Per-role model choices for pstack skills on GitHub Copilot, written by setup-pstack. Every role keeps its line; rerun setup-pstack to change one. A value of `inherit-parent` or `auto` runs that role on the parent session's model (the `task` call omits `model`); an alias entry in a panel list still counts toward that panel's fan-out. A model may carry a reasoning effort, as in `gpt-5.5 @xhigh` (levels: low, medium, high, xhigh, max), which the `task` call passes as `reasoning_effort`. `default effort` sets the level for a value without one; `session` keeps the parent session's effort. `session hook: off` stops the SessionStart hook from injecting the poteto-mode mandate; any other value, or no line, leaves it on. `panel vendors: any` records that the user kept a panel whose models come from one vendor.
 ```
 
 ## Detect models
@@ -45,31 +45,37 @@ When the detected set plus `inherit-parent` is 8 choices or fewer, skip the vend
 
 ## Roles by tier
 
-Each tier question below writes every role in its row.
+Each tier question below writes every role in its row. The panel row's roles each take the whole panel list.
 
 | Tier | Roles |
 | --- | --- |
-| Default | `feature, refactoring`, `judgment and prose`, `how explorer`, `how explainer`, `why investigators`, `why synthesizer` |
-| Strongest | `bug-fix`, `strongest judgment` |
+| Default | `bug-fix`, `perf-issue`, `hillclimb`, `judgment and prose`, `how explorer`, `how explainer`, `why investigators`, `why synthesizer`, `reflect tooling`, `reflect judgment, divergent, synthesizer`, `swarm workers`, `thermos reviewers`, `no-comments reviewer` |
+| Strongest | `strongest judgment` |
+| Worker | `feature, refactoring` |
+| Panel | `arena runners`, `arena cross-judge pool`, `architect runners`, `interrogate reviewers` |
 
 ## Question sequence
 
 Ask in this order. Each model question is the vendor and model pair above; every other question is one `ask_user` call.
 
-0. **Session model.** "Run every pstack role on this session's model?" with `Yes, use the session's model for every role` and `No, choose models by tier`. This is for a plan that offers one model or only automatic selection, and for anyone who wants no per-role choices. On a re-run, put the choice that matches the saved sheet first, labeled `(current)`. Yes skips questions 1 through 3 and the model detection. Set every role line to `inherit-parent`. Ask questions 4 and 5. No answers the questions below.
+0. **Session model.** "Run every pstack role on this session's model?" with `Yes, use the session's model for every role` and `No, choose models by tier`. This is for a plan that offers one model or only automatic selection, and for anyone who wants no per-role choices. On a re-run, put the choice that matches the saved sheet first, labeled `(current)`. Yes skips questions 1 through 7 and the model detection. Set every role line to `inherit-parent`, with three `inherit-parent` entries in each panel role. Ask questions 8 and 9, then say in step 8 that the panels' diversity is reduced and that panel entries can differ only by reasoning effort. This path needs no `panel vendors: any` line, because a panel of only `inherit-parent` needs no vendor check. No answers the questions below.
 1. **Default model.** "Default model: runs <the Default row's roles>." It writes every role in the Default row.
-2. **Strongest model.** "Strongest model: runs <the Strongest row's roles>." It writes every role in the Strongest row.
-3. **Overrides.** "Override any individual role?" with `No, write the sheet (Recommended)` first, then one choice per tier row, with the row's current value in its label, as `Strongest (<its model ID>)`. Picking a row asks which of its roles to change, then asks one model for that role as in [Choosing one model](#choosing-one-model), with its value first as `(current)`. After each override, ask this question again, until the answer is `No, write the sheet`.
-4. **Session hook.** "Keep the session hook that routes tasks to poteto-mode?" with `On (default)` and `Off`. On a re-run, the saved value comes first as `(current)`.
-5. **Default effort.** "Default reasoning effort for pstack subagents?" with `session (keep the parent's effort)` first, then `low`, `medium`, `high`, `xhigh`, and `max`. It writes the `default effort` line. On a re-run, the saved value comes first as `(current)`. Ask no per-role effort; a saved `@<level>` suffix on a role value stays as written.
+2. **Worker model.** "Worker model: runs <the Worker row's roles>." It writes every role in the Worker row.
+3. **Strongest model.** "Strongest model: runs <the Strongest row's roles>." It writes every role in the Strongest row.
+4. **Panel model 1 of 3**, then **panel model 2 of 3**, then **panel model 3 of 3**, as three separate questions. "Panel model N of 3: panels run one subagent per model, and models from different vendors catch different mistakes." In slots 2 and 3, list the vendors not yet in the panel first, then the rest, then `inherit-parent`. Do not offer a model already in the panel.
+5. **More panel models.** "Add a 4th panel model?" with `Done` as the first choice and `Add a 4th` second. Adding asks one more slot the same way, then asks again for a 5th. Stop offering at 5 models.
+6. **Vendor check.** When the panel's model IDs, not counting `inherit-parent`, all come from one vendor and more than one vendor is detected, ask "The panel is single-vendor (Claude), so its cross-checks share blind spots." with `Pick the panel again` and `Keep it anyway`. Picking again returns to panel model 1. `Keep it anyway` writes the line `panel vendors: any` after the `session hook` line. When only one vendor is detected, skip this question, write `panel vendors: any`, and say in step 8 that the panel's diversity is reduced. A panel of only `inherit-parent` needs no check.
+7. **Overrides.** "Override any individual role?" with `No, write the sheet (Recommended)` first, then one choice per tier row, with the row's current value in its label, as `Strongest (<its model ID>)`. Picking a row asks which of its roles to change, then asks one model for that role as in [Choosing one model](#choosing-one-model), with its value first as `(current)`. A panel role asks its list's slots as in questions 4 through 6 instead. After each override, ask this question again, until the answer is `No, write the sheet`.
+8. **Session hook.** "Keep the session hook that routes tasks to poteto-mode?" with `On (default)` and `Off`. On a re-run, the saved value comes first as `(current)`.
+9. **Default effort.** "Default reasoning effort for pstack subagents?" with `session (keep the parent's effort)` first, then `low`, `medium`, `high`, `xhigh`, and `max`. It writes the `default effort` line. On a re-run, the saved value comes first as `(current)`. Ask no per-role effort; a saved `@<level>` suffix on a role value stays as written.
 
-On a re-run, the saved value for each tier question is the first role in its row. A role whose saved value differs from its question's saved value keeps it, and question 3 shows it.
+The panel from questions 4 through 6 writes every panel role, in slot order. On a re-run, the saved value for each tier question is the first role in its row, and for panel model N the Nth entry of the first panel role. A role whose saved value differs from its question's saved value keeps it, and question 6 shows it.
 
 ## Write and check
 
 Validate as step 5 describes. Copilot's file tools expand neither `~` nor variables, so print the sheet's absolute path with `echo "${COPILOT_HOME:-$HOME/.copilot}/pstack-models.md"` in `bash`, and write the whole sheet to exactly that path in one tool call, so the write asks for path access at most once.
 
-Then run `sh <this skill's directory>/scripts/check-sheet.sh` through `bash`, with the directory's absolute path and no arguments. It checks the Copilot sheet as the plugin hook does at session start: every role has a line, every entry is `inherit-parent`, `auto`, or a model ID with an optional `@<level>`. It prints `sheet ok`, or `sheet invalid:` and each problem. On `sheet invalid`, fix those lines and write the whole sheet again, then rerun the check. The plugin hook approves the check without a prompt.
+Then run `sh <this skill's directory>/scripts/check-sheet.sh` through `bash`, with the directory's absolute path and no arguments. It checks the Copilot sheet as the plugin hook does at session start: every role has a line, every entry is `inherit-parent`, `auto`, or a model ID with an optional `@<level>`, and each panel names models from two vendors unless the sheet has `panel vendors: any`. It prints `sheet ok`, or `sheet invalid:` and each problem. On `sheet invalid`, fix those lines and write the whole sheet again, then rerun the check. The plugin hook approves the check without a prompt.
 
 For the rest of this session, use the values you just wrote; do not read the sheet back. Later sessions get them from the plugin hook and do not ask again.
 

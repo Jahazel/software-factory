@@ -20,5 +20,5 @@ Run when the user asks for work on an open PR: its status, failed checks, review
 
 - [worktree](/Users/jahazelsanchez/.claude/skills/worktree/SKILL.md).
 - [code-review](/Users/jahazelsanchez/.claude/skills/code-review/SKILL.md).
-- [comment rules](../references/agents/comment-sicko.md).
+- [comment rules](../../../agents/comment-sicko.md).
 - [deslop](/Users/jahazelsanchez/.claude/skills/deslop/SKILL.md).

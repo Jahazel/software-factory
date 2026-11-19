@@ -17,7 +17,7 @@ A change is small when it touches one file, changes fewer than about 20 lines, d
 
 ## Platform adaptation
 
-On Codex, read [the tool guide](references/codex-tools.md) before following a playbook or calling a helper. On Claude Code, use available native tools and installed skill names. Resolve the current runtime's supported agent types and model names before dispatch.
+Use the available native tools and installed skill names. Resolve the current runtime's supported agent types and model names before dispatch.
 
 Use the runtime's skill tool when available. Otherwise read the installed skill and its required references. Respect invocation settings. A skill named here is a reference to an existing skill, not a request to install another copy.
 
@@ -36,7 +36,7 @@ Read the project's instructions and use its glossary when present. Shared person
 - Verify changed behavior through its actual user path. Use the project's verification skill. If absent, use [create-verification-skill](/Users/jahazelsanchez/.claude/skills/create-verification-skill/SKILL.md), then run the generated skill. Keep evidence of the action and resulting state.
 - Apply the comment rules before code review and [deslop](/Users/jahazelsanchez/.claude/skills/deslop/SKILL.md) before code commits. A PR with code changes needs independent [code-review](/Users/jahazelsanchez/.claude/skills/code-review/SKILL.md) of committed changes against the review base. Confirm that the review base resolves and that the committed difference is nonempty. Small and medium changes follow their rules in shared conditions.
 - Defects found along the way: report each one with evidence and impact. Repair it in the current change only when the requested task cannot work without the repair. For a confirmed project bug, one with a repeatable failure or direct evidence, create one ticket in the tracker named in the project's `docs/agents/issue-tracker.md`. Give the evidence, the impact, and where it was found. In a public repository, keep private details out of the ticket. Without a configured tracker, list the bug in the reply. Keep a suspected bug in the reply, with no ticket. List a defect in the router or an installed skill in the reply's open items, and leave the installed files unchanged.
-- Comment rules: for a medium or big change, run [no-comments](/Users/jahazelsanchez/.claude/skills/no-comments/SKILL.md) once on the change's diff before code review. It starts one fresh `comment-sicko` helper on the ordinary-work model at medium effort from [model rules](references/model-rules.md). On Claude Code, the agent type is `comment-sicko`. The main agent judges the helper's report and makes the accepted fixes. For fix-round changes, the main agent applies [the comment-review instructions](references/agents/comment-sicko.md) to the changed lines itself.
+- Comment rules: for a medium or big change, run [no-comments](/Users/jahazelsanchez/.claude/skills/no-comments/SKILL.md) once on the change's diff before code review. It starts one fresh `comment-sicko` helper on the model that `no-comments` names (Opus unless the model sheet says otherwise). On Claude Code, the agent type is `pstack:comment-sicko`. The main agent judges the helper's report and makes the accepted fixes. For fix-round changes, the main agent applies [the comment-review instructions](../../agents/comment-sicko.md) to the changed lines itself.
 
 ## Autonomy
 
@@ -59,7 +59,9 @@ Select one playbook from the task's outcome. Open it and copy its steps to the c
 | Settle an idea or open decisions before implementation. | [Planning](playbooks/planning.md). |
 | Design a screen, its flow, and its motion before implementation. | [Design](playbooks/design.md). |
 | Build new or changed behavior from an agreed specification. | [Feature](playbooks/feature.md). |
-| Reproduce and correct a reported defect, including slowness. | [Bug fix](playbooks/bug-fix.md). |
+| Reproduce and correct a reported defect. | [Bug fix](playbooks/bug-fix.md). |
+| Make one known slow page, command, or request faster, such as "this page is slow". | [Perf issue](playbooks/perf-issue.md). |
+| Push one measurable score to a target through repeated measured attempts, such as "get this score to X". | [Hillclimb](playbooks/hillclimb.md). |
 | Answer a question from evidence without implementation. | [Investigation](playbooks/investigation.md). |
 | Change structure while preserving behavior. | [Refactoring](playbooks/refactoring.md). |
 | Open authorized changes for review after checks. | [Opening a PR](playbooks/opening-a-pr.md). |

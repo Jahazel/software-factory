@@ -29,6 +29,6 @@ If output is truncated or insufficient, narrow the query or read more from the s
 
 For tests, builds, deployments, and other tasks that run without input, start one command or watcher that waits for completion. The watcher can check an external service without returning to the model each time. Reuse the running task until it finishes.
 
-Use the longest supported wait up to 60 seconds per tool call, including enclosing tool calls. In Claude Code, use the command tool's supported foreground wait or blocking task-output wait. In Codex, use the wait settings in [the tool guide](codex-tools.md#waiting-for-long-tasks). Return changed status, errors, or the final result. Keep user progress updates within 60 seconds during ongoing work.
+Use the longest supported wait up to 60 seconds per tool call, including enclosing tool calls. In Claude Code, use the command tool's supported foreground wait or blocking task-output wait. Return changed status, errors, or the final result. Keep user progress updates within 60 seconds during ongoing work.
 
 Use shorter waits when the task needs input or the output requires immediate action. A wait limit controls when the tool returns; it does not establish that the task failed. Confirm the final exit status before reporting success.
