@@ -16,6 +16,8 @@ case "$*" in
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
   "issue list "*"--label gardening:cleanup"*) echo "${CLEANUPS:-[]}" ;;
+  "issue list "*"--label gardening:refactor-idea"*) echo "${IDEAS:-[]}" ;;
+  "issue view 80 "*"--json body"*) printf '**Type:** Refactor idea.\n**Rank:** 3 of 3 · **Strength:** Speculative\n' ;;
   "issue list "*) echo "${ISSUES:-[]}" ;;
   "issue create"*) n=$(( $(cat "$GH_LOG.n" 2>/dev/null || echo 59) + 1 )); echo "$n" > "$GH_LOG.n"; echo "https://github.com/o/r/issues/$n" ;;
   "api repos/o/r/issues/12 --jq .id") echo 9012 ;;
@@ -349,4 +351,8 @@ check "a retry adds a missing link before the start label" '[ "$(grep -n "method
 garden; rm -f "$GH_LOG.n"
 ISSUES='[{"number":71,"title":"chore(tests): drop old copies"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
 check "an open issue of another kind with the same title is never reused or started" '! grep -q "issue edit 71 " "$GH_LOG" && ! grep -q "issues/71/dependencies" "$GH_LOG" && grep -qF -- "--title chore(tests): drop old copies" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+IDEAS='[{"number":80,"title":"refactor(a): one module"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a reused idea starts from the filed issue's strength, not the outbox's" '! grep -qF -- "--title refactor(a): one module" "$GH_LOG" && ! grep -q "issue edit 80 " "$GH_LOG"'
 exit "$fails"

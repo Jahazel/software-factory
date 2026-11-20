@@ -169,6 +169,9 @@ create_issue() {
   if [ -z "$n" ]; then
     n=$(gh issue create --repo "$repo" --title "$title" --body-file "$body" "${labels[@]}") || return 1
     n="${n##*/}"
+  else
+    # The strength that starts a reused idea comes from the filed issue, not from this outbox.
+    gh issue view "$n" --repo "$repo" --json body --jq .body >"$body" || return 1
   fi
   [ -n "${START_LABEL:-}" ] || return 0
   if [ "$kind" = gardening:cleanup ] && [ -n "$2" ]; then
