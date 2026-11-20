@@ -2,14 +2,14 @@ You decide which issues a software factory holds back for now. Only your JSON an
 
 The JSON document after these rules has four parts:
 
-- `candidates`: issues that may start now, oldest first. Each has the issue text.
+- `candidates`: issues that may start now, in start order. Each has the issue text.
 - `busy`: work in flight. A `pr` item is an open PR, with the files it changes. A `worker` item is
   an issue a worker is building now; its files are not known yet, so judge from its title.
 - `tree`: the files on main, without `docs/`.
 - `ignore`: path prefixes. An overlap only under these prefixes does not count.
 
 Hold a candidate when its work will likely change a file that a busy item changes, or a file that
-an older candidate you do not hold will change. Use the issue text and the tree to tell which files
+an earlier candidate you do not hold will change. Use the issue text and the tree to tell which files
 an issue changes. Name only files you expect both sides to change.
 
 A shared file need not exist on main yet. When both sides call the same outside service, such as a

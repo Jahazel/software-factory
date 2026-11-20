@@ -105,9 +105,10 @@ refresh() {
   done <<<"$prs"
 }
 
-# Prints the candidate issues, oldest first, one per line: the labeled issues that pass the skip rules.
+# Prints the candidate issues, one per line: the labeled issues that pass the skip rules, oldest
+# first, with gardening issues after every other issue, so feature work takes a free place first.
 pick() {
-  local n issue events labeler cleared_at blockers open_pr closed stopped reason
+  local n issue events labeler cleared_at blockers open_pr closed stopped reason gardening=()
 
   for n in $(gh issue list --repo "$repo" --state open --label "$trigger" --json number --jq 'sort_by(.number) | .[].number'); do
     if ! { issue=$(gh api "repos/$repo/issues/$n") &&
@@ -130,8 +131,11 @@ pick() {
     if [[ "$reason" == stopped:* ]] && [ "$DRY_RUN" != true ]; then
       block_issue "$n" "Factory stopped: $stopped." || { decide "#$n" error "the stop could not be written; the next run retries"; continue; }
     fi
-    if [ -n "$reason" ]; then decide "#$n" skip "$reason"; else echo "$n" >&3; fi
+    if [ -n "$reason" ]; then decide "#$n" skip "$reason"
+    elif jq -e '[.labels[].name] | any(startswith("gardening:"))' <<<"$issue" >/dev/null; then gardening+=("$n")
+    else echo "$n" >&3; fi
   done 3>&1 >&2
+  [ "${#gardening[@]}" = 0 ] || printf '%s\n' "${gardening[@]}"
 }
 
 # Prints the work in flight as a JSON array: each factory PR with the files it changes, and each
@@ -181,7 +185,7 @@ planner_can_change_plan() {
   [ "$busy" != '[]' ] || { [ "$free" -gt 1 ] && [ "$(jq length <<<"$cands")" -gt 1 ]; }
 }
 
-# Reads the candidates on stdin, oldest first, and prints the ones that start now, one per line.
+# Reads the candidates on stdin, in pick's order, and prints the ones that start now, one per line.
 # $1 is the number of resolve jobs from refresh; they take their places first.
 plan() {
   local cands free busy='[]' holds='[]' failure="" err decisions d

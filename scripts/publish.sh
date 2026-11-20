@@ -5,7 +5,8 @@
 # (images and videos the PR attaches), draft (opens the PR as a draft), follow-ups.md (one
 # ready-for-human issue for the PR's Open items), comments/*.md, blocked.md; the gardener also
 # writes issues/*.md ("title: ..." and "labels: ..." lines, a blank line, the body), report.md,
-# and close.
+# and close. START_LABEL, when set, is the label that starts a worker; publish adds it to the
+# gardener issues that start without the owner.
 # Exit 0 after a refusal: it blocks the issue or PR. Exit 1 when GitHub fails: settle then blocks.
 # When gh opens the PR with evidence attached but then reports an error, publish notes it on the PR
 # and goes on.
@@ -13,7 +14,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 repo="$GITHUB_REPOSITORY"
 max_bytes=60000
-gardener_labels="gardening:refactor-idea gardening:cleanup"
+gardener_labels="gardening:refactor-idea gardening:cleanup gardening:retro"
 partial_upload=2
 
 text_refusal() {
@@ -139,16 +140,38 @@ linked_issues() {
         then .number else "\(.repository.owner.login)/\(.repository.name)#\(.number)" end'
 }
 
+# Files the gardener issue in file $1. $2 is the gardening PR's number, or empty when the pass
+# opened none. A retro issue also gets ready-for-human. With START_LABEL set, a cleanup issue waits
+# for the report issue, which the gardening PR closes, and then starts; a refactor idea rated Strong
+# or Worth exploring starts now.
 create_issue() {
-  local title labels keep=() label body
+  local title labels keep=() kept=" " label body url n start=""
   title=$(sed -n '1s/^title: *//p' "$1")
   labels=$(sed -n '2s/^labels: *//p' "$1")
   [ -n "$title" ] || { echo "Skipped ${1##*/}: no title line."; return 0; }
-  for label in ${labels//,/ }; do [[ " $gardener_labels " == *" $label "* ]] && keep+=(--label "$label"); done
+  for label in ${labels//,/ }; do
+    [[ " $gardener_labels " == *" $label "* ]] || continue
+    keep+=(--label "$label"); kept+="$label "
+  done
+  if [[ "$kept" == *" gardening:retro "* ]]; then
+    gh label create ready-for-human --repo "$repo" --color D93F0B --description "Needs the owner; the factory never starts it" >/dev/null 2>&1 || true
+    keep+=(--label ready-for-human)
+  fi
   [ -z "$(gh issue list --repo "$repo" --state open --search "\"$title\" in:title" --json title | jq -r --arg t "$title" '.[] | select(.title == $t) | .title')" ] || return 0
   body=$(mktemp)
   tail -n +4 "$1" >"$body"
-  gh issue create --repo "$repo" --title "$title" --body-file "$body" ${keep[@]+"${keep[@]}"} >/dev/null
+  url=$(gh issue create --repo "$repo" --title "$title" --body-file "$body" ${keep[@]+"${keep[@]}"}) || return 1
+  n="${url##*/}"
+  [ -n "${START_LABEL:-}" ] || return 0
+  if [[ "$kept" == *" gardening:cleanup "* ]] && [ -n "$2" ]; then
+    gh api --method POST "repos/$repo/issues/$n/dependencies/blocked_by" \
+      -F issue_id="$(gh api "repos/$repo/issues/$ISSUE" --jq .id)" >/dev/null || return 1
+    start=yes
+  elif [[ "$kept" == *" gardening:refactor-idea "* ]] && grep -m1 '^\*\*Rank:\*\*' "$body" | grep -qE '\*\*Strength:\*\* (Strong|Worth exploring)'; then
+    start=yes
+  fi
+  [ -z "$start" ] || gh issue edit "$n" --repo "$repo" --add-label "$START_LABEL" >/dev/null || return 1
+  [ -z "$start" ] || echo "Filed #$n with $START_LABEL."
 }
 
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
@@ -173,6 +196,10 @@ else
   else
     valid_factory_branch "$BRANCH" "$ISSUE" || refuse_and_exit "$target" "branch $BRANCH is not a factory branch of issue #$ISSUE"
   fi
+fi
+if [ -n "${START_LABEL:-}" ] && ! valid_trigger "$START_LABEL"; then
+  echo "START_LABEL $START_LABEL is a label the factory or the owner uses for something else; no gardener issue starts."
+  START_LABEL=""
 fi
 if [ "$PROMPT" = gardener.md ]; then
   gh issue view "$ISSUE" --repo "$repo" --json labels --jq '[.labels[].name] | index("gardening:report") != null' | grep -qx true \
@@ -223,7 +250,7 @@ if [ -f "$outbox/pr.md" ]; then
   fi
 fi
 if [ "$PROMPT" = gardener.md ]; then
-  for f in "$outbox"/issues/*.md; do [ ! -f "$f" ] || create_issue "$f"; done
+  for f in "$outbox"/issues/*.md; do [ ! -f "$f" ] || create_issue "$f" "${pr:-}"; done
   [ ! -f "$outbox/report.md" ] || gh issue edit "$ISSUE" --repo "$repo" --body-file "$outbox/report.md" >/dev/null
 fi
 if [ -f "$outbox/blocked.md" ]; then

@@ -16,6 +16,8 @@ case "$*" in
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
   "issue list "*) echo "${ISSUES:-[]}" ;;
+  "issue create"*) n=$(( $(cat "$GH_LOG.n" 2>/dev/null || echo 59) + 1 )); echo "$n" > "$GH_LOG.n"; echo "https://github.com/o/r/issues/$n" ;;
+  "api repos/o/r/issues/12 --jq .id") echo 9012 ;;
   "pr create"*)
     body=$(sed -n 's/.*--body-file \([^ ]*\).*/\1/p' <<<"$*")
     sed 's/^/  body: /' "$body" >> "$GH_LOG"
@@ -286,4 +288,40 @@ seed_old; before=$(tip "$old"); continued ''
 rm "$work/out/pr.md"; printf 'Factory worker blocked: still no service.\n' > "$work/out/blocked.md"
 cont
 check "a continue run that blocks again with no commit only blocks the issue" '[ "$(tip "$old")" = "$before" ] && grep -q "body=Factory worker blocked: still no service." "$GH_LOG" && ! grep -q "refused" "$GH_LOG"'
+
+garden_issue() { printf 'title: %s\nlabels: %s\n\n%s\n' "$2" "$3" "$4" > "$work/out/issues/$1.md"; }
+garden() {
+  fresh 'echo g > app.txt'
+  mkdir -p "$work/out/issues"
+  garden_issue cleanup "chore(tests): drop old copies" gardening:cleanup '**Type:** Cleanup.'
+  garden_issue 1 "refactor(a): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 1 of 3 · **Strength:** Strong'
+  garden_issue 2 "refactor(b): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 2 of 3 · **Strength:** Worth exploring'
+  garden_issue 3 "refactor(c): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 3 of 3 · **Strength:** Speculative'
+  garden_issue retro "[software-factory] point workers at the test helper" "gardening:retro,ready-for-agent" '**Type:** Retro finding.'
+}
+# The stub numbers new issues from 60 in creation order.
+filed() { grep -F "issue create --repo o/r --title $1 " "$GH_LOG"; }
+number() { echo $(( 59 + $(grep "issue create" "$GH_LOG" | grep -nF -- "--title $1 " | cut -d: -f1) )); }
+
+garden; rm -f "$GH_LOG.n"
+REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+c=$(number "chore(tests): drop old copies"); r1=$(number "refactor(a): one module"); r2=$(number "refactor(b): one module"); r3=$(number "refactor(c): one module"); rt=$(number "[software-factory] point workers at the test helper")
+check "the gardener's PR opens" 'grep -q "PR #50 is open" "$work/run.log"'
+check "the cleanup issue waits for the report issue, then gets the start label" 'grep -q "api --method POST repos/o/r/issues/$c/dependencies/blocked_by -F issue_id=9012" "$GH_LOG" && grep -q "issue edit $c --repo o/r --add-label ready-for-agent" "$GH_LOG"'
+check "the link comes before the start label" '[ "$(grep -n "issues/$c/dependencies" "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n "issue edit $c " "$GH_LOG" | cut -d: -f1)" ]'
+check "Strong and Worth exploring ideas get the start label" 'grep -q "issue edit $r1 --repo o/r --add-label ready-for-agent" "$GH_LOG" && grep -q "issue edit $r2 --repo o/r --add-label ready-for-agent" "$GH_LOG"'
+check "a Speculative idea waits for the owner" '! grep -q "issue edit $r3 " "$GH_LOG"'
+check "a retro issue gets ready-for-human, never the start label" 'filed "[software-factory] point workers at the test helper" | grep -q -- "--label gardening:retro --label ready-for-human" && ! filed "[software-factory]" | grep -q "ready-for-agent" && ! grep -q "issue edit $rt " "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"; rm "$work/out/pr.md" "$work/out/head.bundle"
+REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "with no gardening PR, the cleanup issue does not start" 'c=$(number "chore(tests): drop old copies") && ! grep -q "issue edit $c " "$GH_LOG" && ! grep -q "dependencies" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+REPORT=true PROMPT=gardener.md run
+check "with no start label, no gardener issue starts" '! grep -q "issue edit" "$GH_LOG" && ! grep -q "dependencies" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+REPORT=true PROMPT=gardener.md START_LABEL=gardening:cleanup run
+check "a start label the factory uses for something else starts nothing" '! grep -q "issue edit" "$GH_LOG" && grep -q "no gardener issue starts" "$work/run.log"'
 exit "$fails"
