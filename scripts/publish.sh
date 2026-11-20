@@ -145,7 +145,7 @@ linked_issues() {
 # $2 is the gardening PR's number, or empty when the pass opened none. A retro issue also gets
 # ready-for-human. With START_LABEL set, a cleanup issue waits for the report issue, which the
 # gardening PR closes, and then starts; a refactor idea rated Strong or Worth exploring starts now.
-# An issue already open with the same title is reused, so a retry finishes the link and the label.
+# An open issue of the same kind with the same title is reused, so a retry finishes the link and the label.
 create_issue() {
   local title kind labels=() body n start=""
   case "${1##*/}" in
@@ -164,7 +164,7 @@ create_issue() {
   fi
   body=$(mktemp)
   tail -n +4 "$1" >"$body"
-  n=$(gh issue list --repo "$repo" --state open --search "\"$title\" in:title" --json number,title \
+  n=$(gh issue list --repo "$repo" --state open --label "$kind" --search "\"$title\" in:title" --json number,title \
     | jq -r --arg t "$title" '[.[] | select(.title == $t)] | .[0].number // ""') || return 1
   if [ -z "$n" ]; then
     n=$(gh issue create --repo "$repo" --title "$title" --body-file "$body" "${labels[@]}") || return 1

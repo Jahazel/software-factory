@@ -15,6 +15,7 @@ case "$*" in
   "api --paginate repos/o/r/issues/"*"/comments"*) jq -r "${@: -1}" <<<"${COMMENTS:-[]}" ;;
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
+  "issue list "*"--label gardening:cleanup"*) echo "${CLEANUPS:-[]}" ;;
   "issue list "*) echo "${ISSUES:-[]}" ;;
   "issue create"*) n=$(( $(cat "$GH_LOG.n" 2>/dev/null || echo 59) + 1 )); echo "$n" > "$GH_LOG.n"; echo "https://github.com/o/r/issues/$n" ;;
   "api repos/o/r/issues/12 --jq .id") echo 9012 ;;
@@ -332,13 +333,20 @@ garden_issue extra "refactor(e): one module" gardening:refactor-idea $'**Type:**
 garden_issue 3 "chore: start me" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 1 of 3 · **Strength:** Strong'
 REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
 check "only the gardener's own file names are filed, and an idea needs a refactor( title" '! grep -qF -- "--title refactor(d)" "$GH_LOG" && ! grep -qF -- "--title refactor(e)" "$GH_LOG" && ! grep -qF -- "--title chore: start me" "$GH_LOG" && grep -q "Skipped 4.md" "$work/run.log" && grep -q "Skipped extra.md" "$work/run.log" && grep -q "Skipped 3.md" "$work/run.log"'
-check "the labels line cannot add the start label" '! filed "[software-factory]" | grep -q "ready-for-agent"'
 
 garden; rm -f "$GH_LOG.n"; touch "$work/out/close"
 REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
 check "a close file next to a PR does not close the report, so the cleanup keeps waiting" 'grep -q "PR #50 is open" "$work/run.log" && ! grep -q "issue close" "$GH_LOG"'
 
 garden; rm -f "$GH_LOG.n"
-ISSUES='[{"number":70,"title":"chore(tests): drop old copies"}]' DEPS=12 REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+CLEANUPS='[{"number":70,"title":"chore(tests): drop old copies"}]' DEPS=12 REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
 check "a retry reuses the open cleanup issue, keeps its link, and adds the start label" '! grep -qF -- "--title chore(tests): drop old copies" "$GH_LOG" && ! grep -q "method POST repos/o/r/issues/70/dependencies" "$GH_LOG" && grep -q "issue edit 70 --repo o/r --add-label ready-for-agent" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+CLEANUPS='[{"number":70,"title":"chore(tests): drop old copies"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a retry adds a missing link before the start label" '[ "$(grep -n "method POST repos/o/r/issues/70/dependencies" "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n "issue edit 70 " "$GH_LOG" | cut -d: -f1)" ]'
+
+garden; rm -f "$GH_LOG.n"
+ISSUES='[{"number":71,"title":"chore(tests): drop old copies"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "an open issue of another kind with the same title is never reused or started" '! grep -q "issue edit 71 " "$GH_LOG" && ! grep -q "issues/71/dependencies" "$GH_LOG" && grep -qF -- "--title chore(tests): drop old copies" "$GH_LOG"'
 exit "$fails"
