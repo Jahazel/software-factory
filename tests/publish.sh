@@ -21,6 +21,7 @@ case "$*" in
   "issue list "*) echo "${ISSUES:-[]}" ;;
   "issue create"*) n=$(( $(cat "$GH_LOG.n" 2>/dev/null || echo 59) + 1 )); echo "$n" > "$GH_LOG.n"; echo "https://github.com/o/r/issues/$n" ;;
   "api repos/o/r/issues/12 --jq .id") echo 9012 ;;
+  "api --paginate repos/o/r/issues/"*"/events") echo "${EVENTS:-[]}" ;;
   "api repos/o/r/issues/"*"/dependencies/blocked_by --jq"*) echo "${DEPS:-}" ;;
   "pr create"*)
     body=$(sed -n 's/.*--body-file \([^ ]*\).*/\1/p' <<<"$*")
@@ -355,4 +356,8 @@ check "an open issue of another kind with the same title is never reused or star
 garden; rm -f "$GH_LOG.n"
 IDEAS='[{"number":80,"title":"refactor(a): one module"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
 check "a reused idea starts from the filed issue's strength, not the outbox's" '! grep -qF -- "--title refactor(a): one module" "$GH_LOG" && ! grep -q "issue edit 80 " "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+CLEANUPS='[{"number":70,"title":"chore(tests): drop old copies"}]' DEPS=12 EVENTS='[{"id":5,"event":"labeled","label":{"name":"ready-for-agent"}},{"id":6,"event":"unlabeled","label":{"name":"ready-for-agent"}}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a reused issue that had the start label before does not get it again" '! grep -q "issue edit 70 " "$GH_LOG" && grep -q "#70 had ready-for-agent before" "$work/run.log"'
 exit "$fails"

@@ -147,7 +147,7 @@ linked_issues() {
 # gardening PR closes, and then starts; a refactor idea rated Strong or Worth exploring starts now.
 # An open issue of the same kind with the same title is reused, so a retry finishes the link and the label.
 create_issue() {
-  local title kind labels=() body n start=""
+  local title kind labels=() body n start="" reused="" had
   case "${1##*/}" in
     cleanup.md) kind=gardening:cleanup ;;
     [1-3].md) kind=gardening:refactor-idea ;;
@@ -170,6 +170,7 @@ create_issue() {
     n=$(gh issue create --repo "$repo" --title "$title" --body-file "$body" "${labels[@]}") || return 1
     n="${n##*/}"
   else
+    reused=yes
     # The strength that starts a reused idea comes from the filed issue, not from this outbox.
     gh issue view "$n" --repo "$repo" --json body --jq .body >"$body" || return 1
   fi
@@ -184,6 +185,12 @@ create_issue() {
     start=yes
   fi
   [ -n "$start" ] || return 0
+  # A reused issue that ever had the start label got it before; the owner may have removed it since.
+  if [ -n "$reused" ]; then
+    had=$(gh api --paginate "repos/$repo/issues/$n/events" \
+      | jq -r --arg l "$START_LABEL" '.[] | select(.event == "labeled" and .label.name == $l) | .id') || return 1
+    [ -z "$had" ] || { echo "#$n had $START_LABEL before; not adding it again."; return 0; }
+  fi
   gh issue edit "$n" --repo "$repo" --add-label "$START_LABEL" >/dev/null || return 1
   echo "Filed #$n with $START_LABEL."
 }
