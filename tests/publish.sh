@@ -15,7 +15,14 @@ case "$*" in
   "api --paginate repos/o/r/issues/"*"/comments"*) jq -r "${@: -1}" <<<"${COMMENTS:-[]}" ;;
   "pr view "*"closingIssuesReferences"*) echo "{\"closingIssuesReferences\": ${LINKED:-[]}}" ;;
   "pr close"*) ;;
+  "issue list "*"--label gardening:cleanup"*) echo "${CLEANUPS:-[]}" ;;
+  "issue list "*"--label gardening:refactor-idea"*) echo "${IDEAS:-[]}" ;;
+  "issue view 80 "*"--json body"*) printf '**Type:** Refactor idea.\n**Rank:** 3 of 3 · **Strength:** Speculative\n' ;;
   "issue list "*) echo "${ISSUES:-[]}" ;;
+  "issue create"*) n=$(( $(cat "$GH_LOG.n" 2>/dev/null || echo 59) + 1 )); echo "$n" > "$GH_LOG.n"; echo "https://github.com/o/r/issues/$n" ;;
+  "api repos/o/r/issues/12 --jq .id") echo 9012 ;;
+  "api --paginate repos/o/r/issues/"*"/events") echo "${EVENTS:-[]}" ;;
+  "api repos/o/r/issues/"*"/dependencies/blocked_by --jq"*) echo "${DEPS:-}" ;;
   "pr create"*)
     body=$(sed -n 's/.*--body-file \([^ ]*\).*/\1/p' <<<"$*")
     sed 's/^/  body: /' "$body" >> "$GH_LOG"
@@ -286,4 +293,71 @@ seed_old; before=$(tip "$old"); continued ''
 rm "$work/out/pr.md"; printf 'Factory worker blocked: still no service.\n' > "$work/out/blocked.md"
 cont
 check "a continue run that blocks again with no commit only blocks the issue" '[ "$(tip "$old")" = "$before" ] && grep -q "body=Factory worker blocked: still no service." "$GH_LOG" && ! grep -q "refused" "$GH_LOG"'
+
+garden_issue() { printf 'title: %s\nlabels: %s\n\n%s\n' "$2" "$3" "$4" > "$work/out/issues/$1.md"; }
+garden() {
+  fresh 'echo g > app.txt'
+  mkdir -p "$work/out/issues"
+  garden_issue cleanup "chore(tests): drop old copies" gardening:cleanup '**Type:** Cleanup.'
+  garden_issue 1 "refactor(a): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 1 of 3 · **Strength:** Strong'
+  garden_issue 2 "refactor(b): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 2 of 3 · **Strength:** Worth exploring'
+  garden_issue 3 "refactor(c): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 3 of 3 · **Strength:** Speculative'
+  garden_issue retro-1 "[software-factory] point workers at the test helper" "gardening:retro,ready-for-agent" '**Type:** Retro finding.'
+}
+# The stub numbers new issues from 60 in creation order.
+filed() { grep -F "issue create --repo o/r --title $1 " "$GH_LOG"; }
+number() { echo $(( 59 + $(grep "issue create" "$GH_LOG" | grep -nF -- "--title $1 " | cut -d: -f1) )); }
+
+garden; rm -f "$GH_LOG.n"
+REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+c=$(number "chore(tests): drop old copies"); r1=$(number "refactor(a): one module"); r2=$(number "refactor(b): one module"); r3=$(number "refactor(c): one module"); rt=$(number "[software-factory] point workers at the test helper")
+check "the gardener's PR opens" 'grep -q "PR #50 is open" "$work/run.log"'
+check "the cleanup issue waits for the report issue, then gets the start label" 'grep -q "api --method POST repos/o/r/issues/$c/dependencies/blocked_by -F issue_id=9012" "$GH_LOG" && grep -q "issue edit $c --repo o/r --add-label ready-for-agent" "$GH_LOG"'
+check "the link comes before the start label" '[ "$(grep -n "method POST repos/o/r/issues/$c/dependencies" "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n "issue edit $c " "$GH_LOG" | cut -d: -f1)" ]'
+check "Strong and Worth exploring ideas get the start label" 'grep -q "issue edit $r1 --repo o/r --add-label ready-for-agent" "$GH_LOG" && grep -q "issue edit $r2 --repo o/r --add-label ready-for-agent" "$GH_LOG"'
+check "a Speculative idea waits for the owner" '! grep -q "issue edit $r3 " "$GH_LOG"'
+check "a retro issue gets ready-for-human, never the start label" 'filed "[software-factory] point workers at the test helper" | grep -q -- "--label gardening:retro --label ready-for-human" && ! filed "[software-factory]" | grep -q "ready-for-agent" && ! grep -q "issue edit $rt " "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"; rm "$work/out/pr.md" "$work/out/head.bundle"
+REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "with no gardening PR, the cleanup issue does not start" 'c=$(number "chore(tests): drop old copies") && ! grep -q "issue edit $c " "$GH_LOG" && ! grep -q "dependencies" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+REPORT=true PROMPT=gardener.md run
+check "with no start label, no gardener issue starts" 'grep -q "issue create" "$GH_LOG" && ! grep -q "issue edit" "$GH_LOG" && ! grep -q "dependencies" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+REPORT=true PROMPT=gardener.md START_LABEL=gardening:cleanup run
+check "a start label the factory uses for something else starts nothing" '! grep -q "issue edit" "$GH_LOG" && grep -q "no gardener issue starts" "$work/run.log"'
+
+garden; rm -f "$GH_LOG.n"
+garden_issue 4 "refactor(d): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 1 of 3 · **Strength:** Strong'
+garden_issue extra "refactor(e): one module" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 1 of 3 · **Strength:** Strong'
+garden_issue 3 "chore: start me" gardening:refactor-idea $'**Type:** Refactor idea.\n**Rank:** 1 of 3 · **Strength:** Strong'
+REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "only the gardener's own file names are filed, and an idea needs a refactor( title" '! grep -qF -- "--title refactor(d)" "$GH_LOG" && ! grep -qF -- "--title refactor(e)" "$GH_LOG" && ! grep -qF -- "--title chore: start me" "$GH_LOG" && grep -q "Skipped 4.md" "$work/run.log" && grep -q "Skipped extra.md" "$work/run.log" && grep -q "Skipped 3.md" "$work/run.log"'
+
+garden; rm -f "$GH_LOG.n"; touch "$work/out/close"
+REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a close file next to a PR does not close the report, so the cleanup keeps waiting" 'grep -q "PR #50 is open" "$work/run.log" && ! grep -q "issue close" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+CLEANUPS='[{"number":70,"title":"chore(tests): drop old copies"}]' DEPS=12 REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a retry reuses the open cleanup issue, keeps its link, and adds the start label" '! grep -qF -- "--title chore(tests): drop old copies" "$GH_LOG" && ! grep -q "method POST repos/o/r/issues/70/dependencies" "$GH_LOG" && grep -q "issue edit 70 --repo o/r --add-label ready-for-agent" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+CLEANUPS='[{"number":70,"title":"chore(tests): drop old copies"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a retry adds a missing link before the start label" '[ "$(grep -n "method POST repos/o/r/issues/70/dependencies" "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n "issue edit 70 " "$GH_LOG" | cut -d: -f1)" ]'
+
+garden; rm -f "$GH_LOG.n"
+ISSUES='[{"number":71,"title":"chore(tests): drop old copies"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "an open issue of another kind with the same title is never reused or started" '! grep -q "issue edit 71 " "$GH_LOG" && ! grep -q "issues/71/dependencies" "$GH_LOG" && grep -qF -- "--title chore(tests): drop old copies" "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+IDEAS='[{"number":80,"title":"refactor(a): one module"}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a reused idea starts from the filed issue's strength, not the outbox's" '! grep -qF -- "--title refactor(a): one module" "$GH_LOG" && ! grep -q "issue edit 80 " "$GH_LOG"'
+
+garden; rm -f "$GH_LOG.n"
+CLEANUPS='[{"number":70,"title":"chore(tests): drop old copies"}]' DEPS=12 EVENTS='[{"id":5,"event":"labeled","label":{"name":"ready-for-agent"}},{"id":6,"event":"unlabeled","label":{"name":"ready-for-agent"}}]' REPORT=true PROMPT=gardener.md START_LABEL=ready-for-agent run
+check "a reused issue that had the start label before does not get it again" '! grep -q "issue edit 70 " "$GH_LOG" && grep -q "#70 had ready-for-agent before" "$work/run.log"'
 exit "$fails"

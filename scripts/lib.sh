@@ -181,9 +181,9 @@ valid_holds() {
     | .structured_output.holds' 2>/dev/null
 }
 
-# Reads {candidates (oldest first), free, busy, holds, failure, dry_run} on stdin; holds is null when
-# the planner failed. Prints one {issue, decision, reason, start} line per candidate, in order.
-# A hold on a newer or held candidate is ignored, so the older issue wins and no two holds wait on
+# Reads {candidates (in start order), free, busy, holds, failure, dry_run} on stdin; holds is null
+# when the planner failed. Prints one {issue, decision, reason, start} line per candidate, in order.
+# A hold on a later or held candidate is ignored, so the earlier issue wins and no two holds wait on
 # each other.
 plan_decisions() {
   jq -c --arg ignore "${AGENT_CONFLICTS:-}" '
@@ -195,7 +195,8 @@ plan_decisions() {
     | def open_pr: test("^PR #[0-9]+$") and (.[4:] | tonumber) as $p | $prs | any(. == $p);
       def busy_issue: test("^#[0-9]+$") and (.[1:] | tonumber) as $m | $issues | any(. == $m);
       def earlier_candidate($n; $held): test("^#[0-9]+$") and (.[1:] | tonumber) as $m
-        | $m < $n and ($cands | any(. == $m)) and ($held | any(. == $m) | not);
+        | ($cands | index($m)) as $at
+        | $at != null and $at < ($cands | index($n)) and ($held | any(. == $m) | not);
       def outside_agent_conflicts: . as $f | $prefixes | any(. as $p | $f | startswith($p)) | not;
     (if $dry then {decision: "would start", reason: "would add agent:in-progress and start a worker"}
      else {decision: "start", reason: "claims it and starts a worker"} end) as $start

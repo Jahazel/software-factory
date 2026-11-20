@@ -37,6 +37,10 @@ on:
         description: Prompt file in prompts/ for the issue run; empty picks resolve.md for mode resolve, else worker.md
         type: string
         default: ""
+      start-label:
+        description: The label that starts a worker; publish adds it to the gardener issues that start without the owner. Empty starts none
+        type: string
+        default: ""
       node-version:
         type: string
         default: "24"
@@ -232,7 +236,7 @@ jobs:
           path: |
             ${{ steps.prepare.outputs.worktree || github.workspace }}/${{ inputs.proof-path }}
             ${{ runner.temp }}/worker/
-          retention-days: 7
+          retention-days: 14
           if-no-files-found: warn
 
   # A job's computer holds every secret the job uses, and the agent there has sudo, so only a
@@ -263,6 +267,7 @@ jobs:
           BRANCH: ${{ inputs.branch != '' && inputs.branch || needs.work.outputs.branch }}
           PROMPT: ${{ inputs.prompt != '' && inputs.prompt || (inputs.mode == 'resolve' && 'resolve.md' || 'worker.md') }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          START_LABEL: ${{ inputs.start-label }}
         run: |
           test -n "$GH_TOKEN" || { echo "Issue runs need the FACTORY_GITHUB_TOKEN secret."; exit 1; }
           bash "$RUNNER_TEMP/factory/scripts/publish.sh" "$RUNNER_TEMP/outbox"

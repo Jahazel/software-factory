@@ -41,4 +41,14 @@ FAIL=none check "a closed factory PR stops the issue and blocks it once" \
 CLEARED="2026-10-30T11:00:00Z" FAIL=none check "the owner removing agent:blocked after the close clears the stop" "7"
 LABELS=',{"name":"agent:blocked"}' CLEARED="" FAIL=none check "a stopped issue that is already blocked is not blocked again" "#7: skip (has agent:blocked)"
 LABELS="" CLEARED="" DRY_RUN=true FAIL=none check "a dry run reports the stop and writes nothing" "$stopped"
+
+gh() {
+  case "$*" in
+    "issue list"*) printf '%s\n' 5 6 7 ;;
+    "api repos/o/r/issues/5") echo '{"user":{"login":"o"},"labels":[{"name":"ready-for-agent"},{"name":"gardening:cleanup"}],"sub_issues_summary":{"total":0}}' ;;
+    "api repos/o/r/issues/"[67]) echo '{"user":{"login":"o"},"labels":[{"name":"ready-for-agent"}],"sub_issues_summary":{"total":0}}' ;;
+    *"/events"*) echo '{"event":"labeled","label":"ready-for-agent","actor":"o","at":"2026-10-30T09:00:00Z"}' ;;
+  esac
+}
+CLOSED="[]" CLEARED="" DRY_RUN=false FAIL=none check "gardening issues come after the other candidates, each group oldest first" "6|7|5"
 exit "$fails"

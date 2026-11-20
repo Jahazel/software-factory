@@ -1,5 +1,6 @@
 # The weekly gardening pass. A project repo calls this file on a schedule. It opens a report issue,
-# then one worker reads the merged PRs, blocks the worst repeated pattern, and files refactor ideas.
+# then one worker reads the merged PRs and worker transcripts, blocks the worst repeated pattern,
+# and files refactor ideas and retro findings.
 name: Gardener
 
 on:
@@ -13,6 +14,10 @@ on:
         description: Local hour the pass runs; the caller's schedule lists the UTC hours that can match it
         type: number
         default: 7
+      start-label:
+        description: The orchestrator's trigger label. The cleanup issue and the strong refactor ideas get it, so they start without the owner
+        type: string
+        default: ready-for-agent
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -53,6 +58,7 @@ jobs:
     with:
       issue: ${{ needs.report.outputs.issue }}
       prompt: gardener.md
+      start-label: ${{ inputs.start-label }}
     secrets: inherit
 
   settle:

@@ -47,7 +47,8 @@ fi
 
 for label in "gardening:report|The weekly gardener's report" \
   "gardening:cleanup|Finishes a gardening PR; start it after that PR merges" \
-  "gardening:refactor-idea|A deeper module the gardener suggests; the owner's choice"; do
+  "gardening:refactor-idea|A deeper module the gardener suggests; strong ones start on their own" \
+  "gardening:retro|A change to the agents' prompts, skills, docs, or checks; the owner decides"; do
   gh label create "${label%%|*}" --repo "$repo" --color 0E8A16 --description "${label#*|}" >/dev/null 2>&1 || true
 done
 

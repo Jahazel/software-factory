@@ -36,6 +36,11 @@ check "a hold on an earlier candidate that starts counts" \
 "360 start ($starts) START
 361 hold (overlaps #360: src/a.ts)"
 
+cands='[361,360]' free=2 holds='[{"issue":360,"overlaps":["#361"],"files":["src/a.ts"]}]' \
+check "start order, not issue number, decides which candidate is earlier" \
+"361 start ($starts) START
+360 hold (overlaps #361: src/a.ts)"
+
 cands='[360,361]' free=1 holds='[{"issue":360,"overlaps":["#361"],"files":["src/a.ts"]}]' \
 check "a hold on a later candidate is ignored, so the older issue wins" \
 "360 start (planner hold ignored: no overlap with an open PR, a running worker, or an earlier candidate that starts) START
